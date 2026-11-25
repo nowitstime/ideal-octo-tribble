@@ -20,6 +20,34 @@ export interface ChordNote {
   skipAbs?: number;
 }
 
+/** A pitch-bend point: t in steps from note start, v in semitones. */
+export interface BendPoint {
+  t: number;
+  v: number;
+}
+
+export interface BassNote {
+  step: number;
+  len: number;
+  /** Chord tone: 0 root, 1 third, 2 fifth, 3 seventh, 4 octave (of whatever chord is playing). */
+  tone: number;
+  vel: number;
+  bend?: BendPoint[];
+  skipAbs?: number;
+}
+
+export interface LeadNote {
+  step: number;
+  len: number;
+  /** Scale degree from the key's root around middle C (may span octaves). */
+  degree: number;
+  vel: number;
+  bend?: BendPoint[];
+  skipAbs?: number;
+}
+
+export type ArpPattern = 'up' | 'down' | 'updown' | 'random';
+
 export interface PadParams {
   tune: number; // semitones, -12..12
   decay: number; // multiplier, 0.25..2
@@ -38,6 +66,7 @@ export interface Project {
   progressionName: string;
   drums: {
     muted: boolean;
+    kit: string;
     notes: DrumNote[];
     pads: PadParams[];
     swing: number; // 0..0.6
@@ -45,12 +74,33 @@ export interface Project {
   };
   chords: {
     muted: boolean;
+    preset: string;
     notes: ChordNote[];
     cutoff: number; // 0..1
     release: number; // seconds
     level: number; // 0..1
   };
+  bass: {
+    muted: boolean;
+    preset: string;
+    notes: BassNote[];
+    tone: number; // 0..1 brightness
+    level: number;
+    bendRange: number; // semitones
+  };
+  lead: {
+    muted: boolean;
+    preset: string;
+    notes: LeadNote[];
+    level: number;
+    bendRange: number;
+    octave: number; // -1..1
+    arp: { pattern: ArpPattern; octaves: 1 | 2; gate: number };
+  };
 }
+
+export type TrackId = 'drums' | 'chords' | 'bass' | 'lead';
+export const TRACKS: TrackId[] = ['drums', 'chords', 'bass', 'lead'];
 
 const STORAGE_KEY = 'octo.project.v1';
 
@@ -85,21 +135,48 @@ function defaultProject(): Project {
     progressionName: 'Pop anthem',
     drums: {
       muted: false,
+      kit: 'Pulse',
       notes: drums,
       pads: Array.from({ length: 16 }, () => ({ tune: 0, decay: 1, level: 0.85 })),
       swing: 0,
       velFromPosition: true,
     },
-    chords: { muted: false, notes: [], cutoff: 0.55, release: 0.5, level: 0.7 },
+    chords: { muted: false, preset: 'Soft pad', notes: [], cutoff: 0.55, release: 0.5, level: 0.7 },
+    bass: { muted: false, preset: 'Round', notes: [], tone: 0.5, level: 0.8, bendRange: 2 },
+    lead: { muted: false, preset: 'Glass', notes: [], level: 0.7, bendRange: 2, octave: 0, arp: { pattern: 'up', octaves: 2, gate: 0.6 } },
   };
   p.chords.notes = chordsFromProgression(p);
+  for (let seg = 0; seg < 32; seg += 8) {
+    p.bass.notes.push(
+      { step: seg, len: 3, tone: 0, vel: 0.9 },
+      { step: seg + 3, len: 1, tone: 0, vel: 0.6 },
+      { step: seg + 6, len: 2, tone: 4, vel: 0.75 },
+    );
+  }
   return p;
+}
+
+/** Scale degree of the progression chord at a loop step. */
+export function chordDegreeAt(p: Project, step: number): number {
+  const L = loopSteps(p);
+  const n = p.progression.length;
+  const idx = Math.min(n - 1, Math.max(0, Math.floor((((step % L) + L) % L) / (L / n))));
+  return p.progression[idx];
 }
 
 function load(): Project {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return { ...defaultProject(), ...JSON.parse(raw) };
+    if (raw) {
+      // Merge one level deep so projects saved by older versions gain new fields.
+      const saved = JSON.parse(raw) as Record<string, unknown>;
+      const base = defaultProject() as unknown as Record<string, unknown>;
+      for (const [k, v] of Object.entries(saved)) {
+        const d = base[k];
+        base[k] = d && typeof d === 'object' && !Array.isArray(d) && v && typeof v === 'object' ? { ...d, ...v } : v;
+      }
+      return base as unknown as Project;
+    }
   } catch {
     /* fall through to default */
   }
@@ -147,6 +224,8 @@ export function setBars(p: Project, bars: 1 | 2 | 4) {
     };
     p.drums.notes = grow(p.drums.notes);
     p.chords.notes = grow(p.chords.notes);
+    p.bass.notes = grow(p.bass.notes);
+    p.lead.notes = grow(p.lead.notes);
   }
   p.bars = bars;
 }

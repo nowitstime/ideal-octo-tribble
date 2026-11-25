@@ -214,3 +214,42 @@ h1, h2 { margin: 0; font-weight: 500; letter-spacing: -0.02em; }
 .preset.on { background: var(--surface); }
 .preset-text { flex: 1; display: flex; flex-direction: column; gap: 3px; }
 .preset-name { font-size: 15px; font-weight: 500; }
+
+/* ---------- shared: play row with bend strip, preset switch ---------- */
+.play-row { flex: 1; min-height: 0; display: flex; gap: 8px; }
+.bend { position: relative; width: 40px; flex-shrink: 0; background: var(--surface); touch-action: none; }
+.bend-line { position: absolute; left: 50%; top: 14px; bottom: 14px; width: 1.5px; margin-left: -0.75px; background: var(--ink); opacity: 0.25; }
+.bend-mid { position: absolute; left: 30%; right: 30%; top: 50%; height: 1.5px; background: var(--ink); opacity: 0.35; }
+.bend-dot { position: absolute; left: 50%; top: 50%; width: 16px; height: 16px; border-radius: 50%; background: var(--ink); transform: translate(-50%, -50%); transition: transform .25s cubic-bezier(.3, 1.6, .5, 1); }
+.bend:active .bend-dot { transition: none; }
+
+.preset-switch { display: flex; align-items: center; background: var(--surface); }
+.preset-switch .icon-btn { font-size: 20px; }
+.preset-mid { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; }
+.preset-label { font-size: 16px; font-weight: 500; }
+
+/* ---------- bass ---------- */
+.chip-row { display: flex; justify-content: space-between; align-items: center; }
+.chord-chip { position: relative; width: 36px; height: 36px; font-size: 12px; font-weight: 500; }
+.chord-chip.now::after { content: ''; position: absolute; left: 25%; right: 25%; bottom: -8px; height: 2px; background: var(--ink); }
+.string-stage { position: relative; flex: 1; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; touch-action: none; }
+.zone { display: flex; flex-direction: column; justify-content: space-between; align-items: center; padding: 12px 0 10px; pointer-events: none; transition: background .25s, filter .1s; }
+.zone.held { filter: brightness(0.9); }
+.zone-note { font-size: 17px; font-weight: 500; }
+.zone-role { opacity: 0.75; }
+.string-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.bass-string { fill: none; stroke: var(--ink); stroke-width: 4; stroke-linecap: round; }
+
+/* ---------- lead ---------- */
+.lead-top { display: flex; justify-content: space-between; align-items: center; }
+.oct { display: flex; align-items: center; }
+.oct .icon-btn { font-size: 20px; }
+.pattern-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.field { position: relative; flex: 1; display: flex; touch-action: none; overflow: hidden; }
+.band { flex: 1; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 8px; pointer-events: none; transition: background .3s, opacity .3s; }
+.band-note { font-size: 9px; opacity: 0.8; }
+.rate-guides { position: absolute; inset: 0; display: none; flex-direction: column; pointer-events: none; }
+.rate-guides span { flex: 1; border-bottom: 1px dashed rgba(29, 28, 26, 0.22); display: flex; align-items: flex-start; justify-content: flex-end; padding: 6px 8px; font-family: var(--mono); font-size: 10px; color: var(--muted); }
+.rate-guides span:last-child { border-bottom: none; }
+.field.arp .rate-guides { display: flex; }
+.orb { position: absolute; width: 64px; height: 64px; border-radius: 50%; background: var(--ink); color: var(--paper); transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 10px; pointer-events: none; }

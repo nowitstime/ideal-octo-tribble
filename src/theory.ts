@@ -70,6 +70,22 @@ export function chordMidis(key: number, mode: Mode, degree: number, inv: number,
   return [bass > 47 ? bass - 12 : bass, ...notes];
 }
 
+/** Scale-degree offsets for bass chord tones: root, 3rd, 5th, 7th, octave. */
+export const TONE_OFFSETS = [0, 2, 4, 6, 7];
+export const TONE_NAMES = ['root', '3rd', '5th', '7th', 'oct'];
+
+/** Bass pitch for a chord tone, kept in a low register. */
+export function bassMidi(key: number, mode: Mode, degree: number, tone: number): number {
+  const root = scaleNote(key, mode, degree, 2);
+  const shift = root > 45 ? -12 : 0;
+  return scaleNote(key, mode, degree + TONE_OFFSETS[tone], 2) + shift;
+}
+
+/** Lead pitch for a scale degree (0 = key root around middle C). */
+export function leadMidi(key: number, mode: Mode, degree: number): number {
+  return scaleNote(key, mode, degree, 4);
+}
+
 export function keyName(key: number, mode: Mode): string {
   return `${NOTE_NAMES[key]} ${mode}`;
 }

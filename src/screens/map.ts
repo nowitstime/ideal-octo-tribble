@@ -2,7 +2,8 @@
 // the chord progression threaded in from above.
 import { h, svg, everyFrame } from '../ui/dom';
 import { project, update, subscribe, loopSteps, setBars } from '../state';
-import { transport, type TrackId } from '../audio/transport';
+import { transport } from '../audio/transport';
+import { TRACKS, type TrackId } from '../state';
 import { engine } from '../audio/engine';
 import { chordInfo, keyName } from '../theory';
 import { degreeColor, TRACK_COLOR } from '../ui/colors';
@@ -18,8 +19,8 @@ interface Slot {
 const SLOTS: Slot[] = [
   { id: 'drums', name: 'Drums', route: 'drums', corner: 'tl' },
   { id: 'chords', name: 'Chords', route: 'chords', corner: 'tr' },
-  { id: 'bass', name: 'Bass', corner: 'bl' },
-  { id: 'lead', name: 'Lead', corner: 'br' },
+  { id: 'bass', name: 'Bass', route: 'bass', corner: 'bl' },
+  { id: 'lead', name: 'Lead', route: 'lead', corner: 'br' },
 ];
 
 export function mapScreen(root: HTMLElement): () => void {
@@ -166,7 +167,7 @@ export function mapScreen(root: HTMLElement): () => void {
     quant.classList.toggle('on', project.quantize);
     click.textContent = project.click ? 'click on' : 'click off';
     click.classList.toggle('on', project.click);
-    for (const id of ['drums', 'chords'] as const) {
+    for (const id of TRACKS) {
       const sq = squares.get(id)!;
       sq.classList.toggle('is-muted', project[id].muted);
       const cells = sq.querySelector('.track-cells')!;

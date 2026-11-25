@@ -3,12 +3,14 @@
 import { h, everyFrame } from '../ui/dom';
 import { project, update, loopSteps, chordsFromProgression } from '../state';
 import { transport, playChordNote } from '../audio/transport';
-import { engine, type ChordVoice } from '../audio/engine';
+import { engine, type Voice } from '../audio/engine';
 import { chordInfo, chordMidis, keyName, type Mods } from '../theory';
 import { degreeColor } from '../ui/colors';
-import { instrumentHeader } from '../ui/header';
+import { instrumentHeader, setSubtitle } from '../ui/header';
 import { transportBar } from '../ui/transportBar';
 import { knob } from '../ui/knob';
+import { presetSwitch } from '../ui/presetSwitch';
+import { CHORD_PRESETS, presetByName } from '../audio/presets';
 import { confirmButton } from './drums';
 
 let lastDegree = 0;
@@ -18,7 +20,7 @@ export function chordsScreen(root: HTMLElement, tab: 'play' | 'set'): () => void
   const tb = transportBar();
   cleanups.push(tb.destroy);
   const body = h('div', { class: 'inst-body' });
-  root.append(h('div', { class: 'screen' }, instrumentHeader('chords', 'Chords', `Soft pad · ${keyName(project.key, project.mode)}`, tab), body, tb.el));
+  root.append(h('div', { class: 'screen' }, instrumentHeader('chords', 'Chords', `${project.chords.preset} · ${keyName(project.key, project.mode)}`, tab), body, tb.el));
   (tab === 'play' ? playTab : setTab)(body, cleanups);
   return () => cleanups.forEach((c) => c());
 }
@@ -55,7 +57,7 @@ function playTab(body: HTMLElement, cleanups: (() => void)[]) {
   grid.append(...cols);
   body.append(grid);
 
-  interface Touch { col: number; inv: number; voice: ChordVoice; finish: ((e: PointerEvent) => void) | null; ring: HTMLElement }
+  interface Touch { col: number; inv: number; voice: Voice; finish: ((e: PointerEvent) => void) | null; ring: HTMLElement }
   const touches = new Map<number, Touch>();
   const held = new Array(7).fill(0);
 
@@ -136,8 +138,7 @@ function playTab(body: HTMLElement, cleanups: (() => void)[]) {
     const deg = currentProgDegree() ?? lastDegree;
     const notes = chordMidis(project.key, project.mode, deg, 1, mods).slice(1);
     while (notes.length < 6) notes.push(notes[notes.length - 3] + 12);
-    const c = project.chords;
-    engine.chord([notes[i]], engine.now, 0.8, Math.min(1, c.cutoff + 0.2), 0.9, c.level).release(engine.now + 0.06);
+    engine.voice(presetByName(CHORD_PRESETS, 'Pluck'), notes[i], engine.now, 0.9, { brightness: 0.7, level: project.chords.level, release: 0.6 }).release(engine.now + 0.25);
     const line = strum.children[i] as HTMLElement;
     line.animate([{ transform: 'scaleX(3)' }, { transform: 'scaleX(1)' }], { duration: 300, easing: 'ease-out' });
   };
@@ -168,7 +169,12 @@ function setTab(body: HTMLElement, cleanups: (() => void)[]) {
   };
   body.append(
     h('div', { class: 'section' },
-      h('div', { class: 'section-title' }, h('h2', { text: 'Sound' }), h('span', { class: 'mono muted small', text: 'soft pad' })),
+      h('div', { class: 'section-title' }, h('h2', { text: 'Sound' })),
+      presetSwitch(CHORD_PRESETS.map((p) => p.name), c.preset, (name) => {
+        update((p) => { p.chords.preset = name; p.chords.release = presetByName(CHORD_PRESETS, name).amp.r; });
+        setSubtitle(`${name} · ${keyName(project.key, project.mode)}`);
+        audition();
+      }),
       h('div', { class: 'knobs' },
         knob({ label: 'Tone', min: 0, max: 1, value: c.cutoff, reset: 0.55, color: '#C8BCE9', format: (v) => `${Math.round(v * 100)}`, onChange: set('cutoff') }),
         knob({ label: 'Release', min: 0.05, max: 3, value: c.release, reset: 0.5, color: '#C8BCE9', format: (v) => `${v.toFixed(2)} s`, onChange: set('release') }),

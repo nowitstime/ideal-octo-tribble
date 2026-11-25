@@ -18,6 +18,12 @@ export function instrumentHeader(route: string, title: string, sub: string, tab:
   );
 }
 
+/** Update the small subtitle next to an instrument's title (e.g. after a sound change). */
+export function setSubtitle(text: string) {
+  const el = document.querySelector('.inst-title .mono');
+  if (el) el.textContent = text;
+}
+
 export function backHeader(title: string, action?: HTMLElement): HTMLElement {
   const back = h('a', { class: 'icon-btn', href: '#/', 'aria-label': 'Back to map' });
   back.innerHTML = backIcon;

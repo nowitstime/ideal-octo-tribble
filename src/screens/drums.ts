@@ -4,9 +4,11 @@ import { project, update, subscribe, loopSteps } from '../state';
 import { transport } from '../audio/transport';
 import { engine, PAD_NAMES } from '../audio/engine';
 import { padColor } from '../ui/colors';
-import { instrumentHeader } from '../ui/header';
+import { instrumentHeader, setSubtitle } from '../ui/header';
 import { transportBar } from '../ui/transportBar';
 import { knob } from '../ui/knob';
+import { presetSwitch } from '../ui/presetSwitch';
+import { KITS } from '../audio/presets';
 
 let selectedPad = 0;
 
@@ -15,7 +17,7 @@ export function drumsScreen(root: HTMLElement, tab: 'play' | 'set'): () => void 
   const tb = transportBar();
   cleanups.push(tb.destroy);
   const body = h('div', { class: 'inst-body' });
-  root.append(h('div', { class: 'screen' }, instrumentHeader('drums', 'Drums', 'Pulse kit', tab), body, tb.el));
+  root.append(h('div', { class: 'screen' }, instrumentHeader('drums', 'Drums', `${project.drums.kit} kit`, tab), body, tb.el));
   (tab === 'play' ? playTab : setTab)(body, cleanups);
   return () => cleanups.forEach((c) => c());
 }
@@ -65,7 +67,7 @@ function playTab(body: HTMLElement, cleanups: (() => void)[]) {
         vel = Math.max(0.3, 1 - 0.6 * Math.min(1, d));
       }
       // Sound first, everything else after.
-      engine.drum(i, engine.now, vel, project.drums.pads[i]);
+      engine.drum(i, engine.now, vel, project.drums.pads[i], project.drums.kit);
       transport.recordDrum(e, i, vel);
       if (selectedPad !== i) { selectedPad = i; renderLane(); }
       flash(pad, i);
@@ -103,18 +105,24 @@ function playTab(body: HTMLElement, cleanups: (() => void)[]) {
 }
 
 function setTab(body: HTMLElement, cleanups: (() => void)[]) {
+  const kitSwitch = presetSwitch(KITS.map((k) => k.name), project.drums.kit, (name) => {
+    update((p) => { p.drums.kit = name; });
+    setSubtitle(`${name} kit`);
+    engine.ensure();
+    [0, 4, 1].forEach((pad, i) => engine.drum(pad, engine.now + i * 0.16, 0.85, project.drums.pads[pad], name));
+  });
   const selector = h('div', { class: 'pad-select' });
   const voice = h('div', { class: 'section' });
   const kit = h('div', { class: 'section' });
   body.classList.add('scroll');
-  body.append(selector, voice, kit);
+  body.append(h('div', { class: 'section' }, h('div', { class: 'section-title' }, h('h2', { text: 'Kit' })), kitSwitch), selector, voice, kit);
 
   function renderSelector() {
     selector.replaceChildren(...PAD_NAMES.map((name, i) => {
       const b = h('button', { class: `pad-mini ${i === selectedPad ? 'on' : ''}`, 'aria-label': name, style: { background: padColor(i, i === selectedPad) } });
       b.addEventListener('pointerdown', () => {
         engine.ensure();
-        engine.drum(i, engine.now, 0.85, project.drums.pads[i]);
+        engine.drum(i, engine.now, 0.85, project.drums.pads[i], project.drums.kit);
         if (selectedPad !== i) { selectedPad = i; renderSelector(); renderVoice(); }
       });
       return b;
@@ -133,7 +141,7 @@ function setTab(body: HTMLElement, cleanups: (() => void)[]) {
         knob({ label: 'Level', min: 0, max: 1, value: p.level, reset: 0.85, color: c, format: (v) => `${Math.round(v * 100)}`, onChange: set('level') }),
       ),
       h('div', { class: 'row-buttons' },
-        h('button', { class: 'chip', text: 'Audition', onClick: () => engine.drum(selectedPad, engine.now, 0.9, project.drums.pads[selectedPad]) }),
+        h('button', { class: 'chip', text: 'Audition', onClick: () => engine.drum(selectedPad, engine.now, 0.9, project.drums.pads[selectedPad], project.drums.kit) }),
         confirmButton('Clear this lane', () => update((pr) => { pr.drums.notes = pr.drums.notes.filter((n) => n.pad !== selectedPad); })),
       ),
     );
