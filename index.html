@@ -3,77 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-  <meta name="theme-color" content="#141518">
+  <meta name="theme-color" content="#F5F3EE">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
-  <title>OCTO · Latency lab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <title>OCTO</title>
 </head>
 <body>
-  <main class="app">
-    <header class="top">
-      <span class="label">OCTO · LATENCY LAB</span>
-      <h1>Is the web fast enough?</h1>
-    </header>
-
-    <section class="card" id="start-card">
-      <button class="big-btn" id="start">Tap to start audio</button>
-      <div class="row">
-        <label class="label" for="hint">LATENCY MODE</label>
-        <select id="hint">
-          <option value="interactive" selected>Interactive</option>
-          <option value="0">Lowest (0)</option>
-          <option value="balanced">Balanced</option>
-        </select>
-      </div>
-      <dl class="stats" id="audio-stats">
-        <div><dt>Sample rate</dt><dd id="s-rate">–</dd></div>
-        <div><dt>Base latency</dt><dd id="s-base">–</dd></div>
-        <div><dt>Output latency</dt><dd id="s-out">–</dd></div>
-        <div><dt>Touch → handler</dt><dd id="s-touch">–</dd></div>
-      </dl>
-    </section>
-
-    <section class="card">
-      <div class="row"><span class="label">1 · PADS</span><span class="label dim">CENTRE = LOUDER</span></div>
-      <div class="pads" id="pads">
-        <button class="pad" data-sound="kick" style="--c:#FF6B2C"><span>KICK</span></button>
-        <button class="pad" data-sound="snare" style="--c:#F2B33D"><span>SNARE</span></button>
-        <button class="pad" data-sound="hat" style="--c:#3FC1A8"><span>HAT</span></button>
-        <button class="pad" data-sound="pluck" style="--c:#9C7BFF"><span>PLUCK</span></button>
-      </div>
-      <p class="hint">Finger-drum on these. Does the sound feel attached to your finger, or does it trail behind?</p>
-    </section>
-
-    <section class="card">
-      <div class="row"><span class="label">2 · TAP ALONG</span><span class="label dim" id="tap-count">0 TAPS</span></div>
-      <div class="row">
-        <button class="btn" id="metro">Start metronome</button>
-        <div class="bpm">
-          <button class="btn small" id="bpm-down" aria-label="Slower">−</button>
-          <span id="bpm">100</span>
-          <button class="btn small" id="bpm-up" aria-label="Faster">+</button>
-        </div>
-      </div>
-      <button class="tap" id="tap">TAP ON THE CLICK</button>
-      <dl class="stats">
-        <div><dt>Recording offset</dt><dd id="t-mean">–</dd></div>
-        <div><dt>Spread (±)</dt><dd id="t-sd">–</dd></div>
-      </dl>
-      <p class="hint">Tap with the beat for 16+ taps. The offset is how much the app will shift your recorded notes so they land on the beat you heard.</p>
-      <button class="btn ghost" id="tap-reset">Reset taps</button>
-    </section>
-
-    <section class="card">
-      <div class="row"><span class="label">3 · MIC ROUND TRIP</span></div>
-      <button class="btn" id="mic">Measure speaker → mic</button>
-      <dl class="stats">
-        <div><dt>Round trip</dt><dd id="m-mean">–</dd></div>
-        <div><dt>Readings</dt><dd id="m-all">–</dd></div>
-      </dl>
-      <p class="hint">Volume up, quiet room, no headphones. Plays loud clicks and listens for them. That's speaker + mic delay together, so the speaker-only delay is roughly half or less. Bluetooth adds 150 ms or more, so use the phone speaker or wired headphones.</p>
-    </section>
-
-    <footer class="foot label dim" id="status">AUDIO OFF</footer>
-  </main>
+  <div id="app"></div>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
