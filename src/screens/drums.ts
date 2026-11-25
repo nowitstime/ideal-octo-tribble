@@ -27,10 +27,11 @@ function playTab(body: HTMLElement, cleanups: (() => void)[]) {
   const laneLabel = h('span');
   const lane = h('div', { class: 'lane' });
   const head = h('span', { class: 'lane-head' });
-  body.append(h('div', { class: 'lane-labels mono muted small' }, laneLabel, h('span', { text: 'tap a bead to toggle' })), lane);
+  const clearLane = confirmButton('clear', () => update((p) => { p.drums.notes = p.drums.notes.filter((n) => n.pad !== selectedPad); }), 'text-btn');
+  body.append(h('div', { class: 'lane-labels mono muted small' }, laneLabel, clearLane), lane);
 
   function renderLane() {
-    laneLabel.textContent = PAD_NAMES[selectedPad];
+    laneLabel.textContent = `${PAD_NAMES[selectedPad]} · tap a bead to toggle`;
     const L = loopSteps(project);
     const rows: HTMLElement[] = [];
     for (let bar = 0; bar < L / 16; bar++) {
@@ -166,8 +167,8 @@ function setTab(body: HTMLElement, cleanups: (() => void)[]) {
 }
 
 /** A button that asks for a second tap before doing something destructive. */
-export function confirmButton(label: string, action: () => void): HTMLButtonElement {
-  const b = h('button', { class: 'chip', text: label });
+export function confirmButton(label: string, action: () => void, cls = 'chip'): HTMLButtonElement {
+  const b = h('button', { class: cls, text: label });
   let armed = 0;
   b.addEventListener('click', () => {
     if (armed) {

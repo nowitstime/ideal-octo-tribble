@@ -1,5 +1,8 @@
 // A thin vertical pitch wheel on the screen edge. Drag up/down to bend, it springs back on release.
-import { h } from './dom';
+import { h, onMove } from './dom';
+
+/** Finger travel (px) for a full-range bend. Short, so bends feel immediate. */
+const FULL_BEND_PX = 110;
 
 export function bendStrip(range: () => number, onBend: (semis: number) => void): HTMLElement {
   const dot = h('span', { class: 'bend-dot' });
@@ -7,7 +10,7 @@ export function bendStrip(range: () => number, onBend: (semis: number) => void):
   let startY = 0;
   let active = -1;
 
-  const show = (f: number) => { dot.style.transform = `translate(-50%, calc(-50% + ${-f * (el.clientHeight / 2 - 14)}px))`; };
+  const show = (f: number) => { dot.style.transform = `translate(-50%, calc(-50% + ${-f * FULL_BEND_PX}px))`; };
 
   el.addEventListener('pointerdown', (e) => {
     if (active !== -1) return;
@@ -15,17 +18,18 @@ export function bendStrip(range: () => number, onBend: (semis: number) => void):
     el.setPointerCapture(e.pointerId);
     active = e.pointerId;
     startY = e.clientY;
-    dot.getAnimations().forEach((a) => a.cancel());
+    el.classList.add('dragging');
   });
-  el.addEventListener('pointermove', (e) => {
+  onMove(el, (e) => {
     if (e.pointerId !== active) return;
-    const f = Math.max(-1, Math.min(1, (startY - e.clientY) / (el.clientHeight / 2)));
+    const f = Math.max(-1, Math.min(1, (startY - e.clientY) / FULL_BEND_PX));
     show(f);
     onBend(f * range());
   });
   const end = (e: PointerEvent) => {
     if (e.pointerId !== active) return;
     active = -1;
+    el.classList.remove('dragging');
     onBend(0);
     show(0);
   };

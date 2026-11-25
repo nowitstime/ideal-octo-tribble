@@ -12,6 +12,8 @@ import { knob } from '../ui/knob';
 import { presetSwitch } from '../ui/presetSwitch';
 import { CHORD_PRESETS, presetByName } from '../audio/presets';
 import { confirmButton } from './drums';
+import { noteLane } from '../ui/noteLane';
+import { onMove } from '../ui/dom';
 
 let lastDegree = 0;
 
@@ -42,6 +44,9 @@ function playTab(body: HTMLElement, cleanups: (() => void)[]) {
     h('span', { style: { background: degreeColor(d) }, text: chordInfo(project.key, project.mode, d).name }));
   strip.append(...stripCells);
   body.append(strip);
+  const lane = noteLane('chords');
+  cleanups.push(lane.destroy);
+  body.append(lane.el);
 
   // ---------- columns ----------
   const grid = h('div', { class: 'chord-grid' });
@@ -103,7 +108,7 @@ function playTab(body: HTMLElement, cleanups: (() => void)[]) {
     const { col, inv, x, y } = locate(e);
     begin(e, col, inv, x, y);
   });
-  grid.addEventListener('pointermove', (e) => {
+  onMove(grid, (e) => {
     const t = touches.get(e.pointerId);
     if (!t) return;
     const { col, inv, x, y } = locate(e);

@@ -1,7 +1,8 @@
 // Bass: one string split into chord-tone zones (root, 3rd, 5th, 7th, octave)
 // that retune to whatever chord is playing. Slide along it to glide,
 // pull it off its line to bend, or use the bend strip on the edge.
-import { h, svg, everyFrame } from '../ui/dom';
+import { h, svg, everyFrame, onMove } from '../ui/dom';
+import { noteLane } from '../ui/noteLane';
 import { project, update, type BassNote } from '../state';
 import { transport, playBass, type LiveBend } from '../audio/transport';
 import { engine, type Voice } from '../audio/engine';
@@ -29,6 +30,8 @@ export function bassScreen(root: HTMLElement, tab: 'play' | 'set'): () => void {
 }
 
 const ZONES = 5;
+/** Finger travel (px) off the string for a full-range bend. */
+const BEND_PX = 70;
 
 function playTab(body: HTMLElement, cleanups: (() => void)[]) {
   const chordNow = () => (transport.playing ? transport.heardChord() : project.progression[manualIdx] ?? project.progression[0]);
@@ -40,6 +43,9 @@ function playTab(body: HTMLElement, cleanups: (() => void)[]) {
     return b;
   });
   body.append(h('div', { class: 'chip-row' }, h('div', { class: 'mini-prog' }, ...chips), h('span', { class: 'mono muted small', text: 'follows the chords' })));
+  const lane = noteLane('bass');
+  cleanups.push(lane.destroy);
+  body.append(lane.el);
 
   // ---------- the string ----------
   const zones = Array.from({ length: ZONES }, (_, i) =>
@@ -99,10 +105,11 @@ function playTab(body: HTMLElement, cleanups: (() => void)[]) {
     return a + (b - a) * f;
   };
 
+  let glideTime = 0.003;
   const applyPitch = () => {
     if (!active) return;
     const total = active.semis + stripBend;
-    active.voice.setPitch(total, engine.now);
+    active.voice.setPitch(total, engine.now, glideTime);
     if (active.startAbs !== null) active.bends.push({ abs: transport.absAt(engine.now - engine.outputDelay), v: total });
   };
 
@@ -135,13 +142,13 @@ function playTab(body: HTMLElement, cleanups: (() => void)[]) {
     zones[tone].classList.add('held');
   });
 
-  stage.addEventListener('pointermove', (e) => {
+  onMove(stage, (e) => {
     if (!active || e.pointerId !== active.id) return;
     const r = stage.getBoundingClientRect();
     const x = e.clientX - r.left, y = e.clientY - r.top;
     const dy = y - active.y0;
     // Pulling the string either way tightens it: pitch goes up.
-    const bend = Math.min(1, Math.abs(dy) / (H * 0.4)) * project.bass.bendRange;
+    const bend = Math.min(1, Math.abs(dy) / BEND_PX) * project.bass.bendRange;
     const slide = Math.abs(x - active.x) > 6 ? midiAtX(x, active.chord) - active.baseMidi : 0;
     active.semis = slide + bend;
     applyPitch();

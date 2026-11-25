@@ -194,17 +194,65 @@ export function subscribe(fn: Listener): () => void {
   return () => listeners.delete(fn);
 }
 
-/** Mutate the project, then notify and save. */
-export function update(fn: (p: Project) => void) {
-  fn(project);
+const serialize = () => JSON.stringify(project, (k, v) => (k === 'skipAbs' ? undefined : v));
+
+// Undo history: snapshots of the whole project. Changes closer together than
+// UNDO_GAP ms (a knob drag, a burst of recorded hits) count as one step.
+const UNDO_GAP = 700;
+const undoStack: string[] = [];
+const redoStack: string[] = [];
+let snapshot = serialize();
+let lastChange = 0;
+
+function changed() {
   listeners.forEach((l) => l());
   clearTimeout(saveTimer);
   saveTimer = window.setTimeout(save, 300);
 }
 
+/** Mutate the project, then notify and save. */
+export function update(fn: (p: Project) => void) {
+  const now = performance.now();
+  if (now - lastChange > UNDO_GAP) {
+    undoStack.push(snapshot);
+    if (undoStack.length > 80) undoStack.shift();
+    redoStack.length = 0;
+  }
+  lastChange = now;
+  fn(project);
+  snapshot = serialize();
+  changed();
+}
+
+function restore(json: string) {
+  const data = JSON.parse(json) as Project;
+  for (const k of Object.keys(project)) delete (project as unknown as Record<string, unknown>)[k];
+  Object.assign(project, data);
+  snapshot = json;
+  lastChange = 0;
+  changed();
+}
+
+export const canUndo = () => undoStack.length > 0;
+export const canRedo = () => redoStack.length > 0;
+
+export function undo() {
+  const prev = undoStack.pop();
+  if (prev === undefined) return;
+  redoStack.push(snapshot);
+  restore(prev);
+}
+
+export function redo() {
+  const next = redoStack.pop();
+  if (next === undefined) return;
+  undoStack.push(snapshot);
+  restore(next);
+}
+
 function save() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(project, (k, v) => (k === 'skipAbs' ? undefined : v)));
+    localStorage.setItem(STORAGE_KEY, serialize());
   } catch {
     /* storage unavailable: keep working in memory */
   }

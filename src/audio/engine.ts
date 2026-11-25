@@ -390,7 +390,7 @@ class Engine {
 
     let released = false;
     return {
-      setPitch: (semis, at, glide = 0.012) => {
+      setPitch: (semis, at, glide = 0.004) => {
         for (const [osc, base] of oscs) osc.detune.setTargetAtTime(base + semis * 100, at, glide);
       },
       setBrightness: (b, at) => filt.frequency.setTargetAtTime(cutoffFor(b), at, 0.02),

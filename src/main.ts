@@ -17,6 +17,33 @@ let cleanup: (() => void) | null = null;
 window.addEventListener('pointerdown', () => engine.ensure(), { capture: true });
 document.addEventListener('contextmenu', (e) => e.preventDefault());
 
+// Android treats a held finger as a long-press (vibration, link previews,
+// text selection). Holding is how you play here, so take over touches:
+// cancel the browser's default and turn short taps back into clicks.
+// Pointer events (used by every instrument) are unaffected. Scrollable
+// panels keep native touch so they still scroll, except over controls you hold.
+const taps = new Map<number, { x: number; y: number; el: Element }>();
+const HOLD_SURFACES = '.knob-body, .bend, .mod, .pad, .pad-mini, .chord-grid, .string-stage, .field, .strum, .bpm';
+document.addEventListener('touchstart', (e) => {
+  const target = e.target as Element;
+  if (target.closest('.scroll') && !target.closest(HOLD_SURFACES)) return;
+  e.preventDefault();
+  for (const t of Array.from(e.changedTouches)) taps.set(t.identifier, { x: t.clientX, y: t.clientY, el: target });
+}, { passive: false });
+document.addEventListener('touchend', (e) => {
+  for (const t of Array.from(e.changedTouches)) {
+    const start = taps.get(t.identifier);
+    taps.delete(t.identifier);
+    if (!start || Math.hypot(t.clientX - start.x, t.clientY - start.y) > 12) continue;
+    const el = start.el.closest('button, a, .note-lane') as HTMLElement | null;
+    if (!el || el.closest(HOLD_SURFACES)) continue;
+    // The note lane needs the tap position to know which note was hit.
+    if (el.matches('.note-lane')) el.dispatchEvent(new MouseEvent('click', { clientX: t.clientX, clientY: t.clientY, bubbles: true }));
+    else el.click();
+  }
+}, { passive: false });
+document.addEventListener('touchcancel', (e) => { for (const t of Array.from(e.changedTouches)) taps.delete(t.identifier); });
+
 function route() {
   cleanup?.();
   root.replaceChildren();

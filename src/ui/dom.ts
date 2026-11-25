@@ -31,6 +31,23 @@ export function svg<K extends keyof SVGElementTagNameMap>(tag: K, props: Props =
   return el;
 }
 
+/**
+ * Low-latency pointer moves. Chrome's `pointerrawupdate` arrives as soon as the
+ * touch moves instead of waiting for the next frame; plain `pointermove` is the
+ * fallback. Duplicates (same pointer, not newer) are dropped.
+ */
+export function onMove(el: Element, fn: (e: PointerEvent) => void) {
+  const last = new Map<number, number>();
+  const handler = (ev: Event) => {
+    const e = ev as PointerEvent;
+    if ((last.get(e.pointerId) ?? -1) >= e.timeStamp) return;
+    last.set(e.pointerId, e.timeStamp);
+    fn(e);
+  };
+  if ('onpointerrawupdate' in window) el.addEventListener('pointerrawupdate', handler);
+  el.addEventListener('pointermove', handler);
+}
+
 /** Run `fn` once per animation frame until the returned stop function is called. */
 export function everyFrame(fn: () => void): () => void {
   let id = 0;

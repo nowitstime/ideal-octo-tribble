@@ -1,7 +1,8 @@
-// Lead: a field of scale-note bands. Left→right is pitch (magnetic: slow moves
-// settle on notes, fast moves glide), up is brighter. In Arp mode, touching the
-// field spawns an orb that arpeggiates the current chord in time with the loop.
-import { h, everyFrame } from '../ui/dom';
+// Lead: two rows of big note tiles (top row an octave above the bottom).
+// Touch = exactly in tune. Slide sideways to glide to the next tile, push
+// up/down to bend. "Chord notes" shows only notes of the chord playing now.
+// In Arp mode, touching spawns an orb that arpeggiates the chord in time.
+import { h, everyFrame, onMove } from '../ui/dom';
 import { project, update, chordDegreeAt, loopSteps, type ArpPattern } from '../state';
 import { transport, playLead, type LiveBend } from '../audio/transport';
 import { engine, type Voice } from '../audio/engine';
@@ -13,12 +14,16 @@ import { transportBar } from '../ui/transportBar';
 import { bendStrip } from '../ui/bendStrip';
 import { presetSwitch } from '../ui/presetSwitch';
 import { knob } from '../ui/knob';
+import { noteLane } from '../ui/noteLane';
 import { confirmButton } from './drums';
 
-const BANDS = 15; // two octaves + the top root
 const PATTERNS: ArpPattern[] = ['up', 'down', 'updown', 'random'];
 const PATTERN_LABEL: Record<ArpPattern, string> = { up: 'up', down: 'down', updown: 'up-down', random: 'random' };
+/** Finger travel (px) for a full-range bend on a tile. */
+const BEND_PX = 70;
+const RATES = [2, 1, 0.5]; // left → right: 1/8, 1/16, 1/32
 let arpMode = false;
+let chordOnly = true;
 
 export function leadScreen(root: HTMLElement, tab: 'play' | 'set'): () => void {
   const cleanups: (() => void)[] = [];
@@ -32,117 +37,126 @@ export function leadScreen(root: HTMLElement, tab: 'play' | 'set'): () => void {
 
 function playTab(body: HTMLElement, cleanups: (() => void)[]) {
   const offset = () => project.lead.octave * 7;
-  const midiOf = (band: number) => leadMidi(project.key, project.mode, band + offset());
+  const midiOf = (deg: number) => leadMidi(project.key, project.mode, deg);
 
   // ---------- top controls ----------
   const modeTabs = h('div', { class: 'tabs left' });
+  const notesToggle = h('button', { class: 'chip' });
+  notesToggle.addEventListener('click', () => { chordOnly = !chordOnly; renderTop(); renderTiles(true); });
   const octLabel = h('span', { class: 'mono small' });
+  const setOct = (d: number) => { update((p) => { p.lead.octave = Math.max(-1, Math.min(1, p.lead.octave + d)); }); renderTop(); renderTiles(true); };
   const oct = h('div', { class: 'oct' },
     h('button', { class: 'icon-btn', 'aria-label': 'Octave down', text: '−', onClick: () => setOct(-1) }),
     octLabel,
     h('button', { class: 'icon-btn', 'aria-label': 'Octave up', text: '+', onClick: () => setOct(1) }));
-  const setOct = (d: number) => { update((p) => { p.lead.octave = Math.max(-1, Math.min(1, p.lead.octave + d)); }); paintBands(true); renderTop(); };
   const patternRow = h('div', { class: 'pattern-row' });
-  body.append(h('div', { class: 'lead-top' }, modeTabs, oct), patternRow);
+  body.append(h('div', { class: 'lead-top' }, modeTabs, h('div', { class: 'lead-top-right' }, notesToggle, oct)));
 
-  function renderTop() {
-    modeTabs.replaceChildren(
-      h('button', { class: arpMode ? '' : 'on', text: 'Play', onClick: () => { arpMode = false; renderTop(); } }),
-      h('button', { class: arpMode ? 'on' : '', text: 'Arp', onClick: () => { arpMode = true; renderTop(); } }));
-    octLabel.textContent = `oct ${project.lead.octave > 0 ? '+' : ''}${project.lead.octave}`;
-    patternRow.style.visibility = arpMode ? 'visible' : 'hidden';
-    patternRow.replaceChildren(...PATTERNS.map((p) => h('button', {
-      class: `chip ${project.lead.arp.pattern === p ? 'on' : ''}`, text: PATTERN_LABEL[p],
-      onClick: () => { update((pr) => { pr.lead.arp.pattern = p; }); renderTop(); },
-    })));
-    field.classList.toggle('arp', arpMode);
-  }
+  const lane = noteLane('lead');
+  cleanups.push(lane.destroy);
+  body.append(lane.el, patternRow);
 
-  // ---------- field ----------
-  const bands = Array.from({ length: BANDS }, () => h('div', { class: 'band' }, h('span', { class: 'band-note mono small' })));
-  const guides = h('div', { class: 'rate-guides' }, h('span', { text: '1/32' }), h('span', { text: '1/16' }), h('span', { text: '1/8' }));
-  const field = h('div', { class: 'field' }, ...bands, guides);
+  // ---------- tiles ----------
+  const rowEls = [h('div', { class: 'tile-row' }), h('div', { class: 'tile-row' })];
+  const guides = h('div', { class: 'rate-guides' }, h('span', { text: '1/8' }), h('span', { text: '1/16' }), h('span', { text: '1/32' }));
+  const field = h('div', { class: 'field' }, ...rowEls, guides);
   let stripBend = 0;
   const strip = bendStrip(() => project.lead.bendRange, (s) => { stripBend = s; onStripBend(); });
   body.append(h('div', { class: 'play-row' }, field, strip));
   const hint = h('p', { class: 'hint' });
   body.append(hint);
-  renderTop();
 
+  function renderTop() {
+    modeTabs.replaceChildren(
+      h('button', { class: arpMode ? '' : 'on', text: 'Play', onClick: () => { arpMode = false; renderTop(); } }),
+      h('button', { class: arpMode ? 'on' : '', text: 'Arp', onClick: () => { arpMode = true; renderTop(); } }));
+    notesToggle.textContent = chordOnly ? 'chord notes' : 'all notes';
+    notesToggle.classList.toggle('on', chordOnly);
+    octLabel.textContent = `oct ${project.lead.octave > 0 ? '+' : ''}${project.lead.octave}`;
+    patternRow.style.display = arpMode ? 'flex' : 'none';
+    patternRow.replaceChildren(...PATTERNS.map((p) => h('button', {
+      class: `chip ${project.lead.arp.pattern === p ? 'on' : ''}`, text: PATTERN_LABEL[p],
+      onClick: () => { update((pr) => { pr.lead.arp.pattern = p; }); renderTop(); },
+    })));
+    field.classList.toggle('arp', arpMode);
+    hint.textContent = arpMode
+      ? 'hold to arpeggiate · further right = faster · circle a second finger to change pattern'
+      : 'tap a tile · slide sideways to glide · push up or down to bend';
+  }
+
+  /** Degrees shown in a row: top row (0) is an octave above the bottom row (1). */
+  const rowDegrees: number[][] = [[], []];
+  const tileEls: HTMLElement[][] = [[], []];
   let chordShown = -99;
-  function paintBands(force = false) {
+
+  function renderTiles(force = false) {
     const chord = transport.heardChord();
     if (!force && chord === chordShown) return;
     chordShown = chord;
-    const tones = new Set([chord % 7, (chord + 2) % 7, (chord + 4) % 7]);
-    bands.forEach((b, i) => {
-      const deg = (((i + offset()) % 7) + 7) % 7;
-      const isTone = tones.has(deg);
-      b.style.background = degreeColor(deg);
-      b.style.opacity = isTone ? '1' : '0.38';
-      (b.firstChild as HTMLElement).textContent = NOTE_NAMES[midiOf(i) % 12];
-    });
+    const isTone = (d: number) => [0, 2, 4].includes((((d - chord) % 7) + 7) % 7);
+    for (const row of [0, 1]) {
+      const lo = offset() + (row === 0 ? 7 : 0);
+      const all = Array.from({ length: 8 }, (_, i) => lo + i);
+      const degs = chordOnly ? all.filter(isTone) : all;
+      rowDegrees[row] = degs;
+      tileEls[row] = degs.map((d) => h('div', {
+        class: 'tile',
+        style: { background: degreeColor(d), opacity: chordOnly || isTone(d) ? '1' : '0.45' },
+      }, h('span', { class: 'tile-note', text: NOTE_NAMES[midiOf(d) % 12] })));
+      rowEls[row].replaceChildren(...tileEls[row]);
+    }
   }
-  paintBands(true);
-  cleanups.push(everyFrame(() => {
-    paintBands();
-    hint.textContent = arpMode
-      ? 'touch to arpeggiate · up = faster · second finger circles to change pattern'
-      : 'slide to glide · rest to settle on a note · up is brighter · wiggle for vibrato';
-  }));
+  renderTop();
+  renderTiles(true);
+  cleanups.push(everyFrame(() => renderTiles()));
 
-  const rect = () => field.getBoundingClientRect();
-
-  /** Magnetic pitch: smooth everywhere, but flat (in tune) near band centres. */
-  const pitchAt = (x: number, w: number) => {
-    const q = Math.max(0, Math.min(BANDS - 1, (x / w) * BANDS - 0.5));
-    const qm = q - (0.85 * Math.sin(2 * Math.PI * q)) / (2 * Math.PI);
-    const i = Math.min(BANDS - 2, Math.floor(qm));
-    const f = qm - i;
-    return { band: Math.round(q), midi: midiOf(i) + (midiOf(i + 1) - midiOf(i)) * f };
+  const locate = (e: PointerEvent, fixedRow?: number) => {
+    const r = field.getBoundingClientRect();
+    const x = e.clientX - r.left, y = e.clientY - r.top;
+    const row = fixedRow ?? (y < r.height / 2 ? 0 : 1);
+    const degs = rowDegrees[row];
+    const idx = Math.max(0, Math.min(degs.length - 1, Math.floor((x / r.width) * degs.length)));
+    return { x, y, row, idx, deg: degs[idx], w: r.width };
   };
 
   // ---------- play mode ----------
-  interface Held { voice: Voice; band: number; glide: number; startAbs: number | null; bends: LiveBend[] }
+  interface Held { voice: Voice; row: number; base: number; cur: number; tile: HTMLElement; y0: number; glide: number; bend: number; startAbs: number | null; bends: LiveBend[] }
   const held = new Map<number, Held>();
 
-  const pushBend = (n: Held) => {
-    const total = n.glide + stripBend;
-    n.voice.setPitch(total, engine.now);
+  const pitch = (n: Held, glideTime: number) => {
+    const total = n.glide + n.bend + stripBend;
+    n.voice.setPitch(total, engine.now, glideTime);
     if (n.startAbs !== null) n.bends.push({ abs: transport.absAt(engine.now - engine.outputDelay), v: total });
   };
 
   function onStripBend() {
-    held.forEach(pushBend);
-    arpVoices.forEach((v) => v.setPitch(stripBend, engine.now));
+    held.forEach((n) => pitch(n, 0.003));
+    arpVoices.forEach((v) => v.setPitch(stripBend, engine.now, 0.003));
   }
 
-  const ringFor = new Map<number, HTMLElement>();
+  const rings = new Map<number, HTMLElement>();
   const placeRing = (id: number, x: number, y: number, cls = 'touch-ring') => {
-    let r = ringFor.get(id);
-    if (!r) { r = h('span', { class: cls }); field.append(r); ringFor.set(id, r); }
+    let r = rings.get(id);
+    if (!r) { r = h('span', { class: cls }); field.append(r); rings.set(id, r); }
     Object.assign(r.style, { left: `${x}px`, top: `${y}px` });
     return r;
   };
-  const dropRing = (id: number) => { ringFor.get(id)?.remove(); ringFor.delete(id); };
+  const dropRing = (id: number) => { rings.get(id)?.remove(); rings.delete(id); };
 
   // ---------- arp mode ----------
-  interface Arp { id: number; x: number; y: number; k: number; nextTime: number; nextAbs: number | null; timer: number }
+  interface Arp { id: number; row: number; deg: number; x: number; w: number; k: number; nextTime: number; nextAbs: number | null; timer: number }
   let arp: Arp | null = null;
   let twistId = -1;
   const arpVoices = new Set<Voice>();
-
-  const rateAt = (y: number, hgt: number) => (y < hgt / 3 ? 0.5 : y < (2 * hgt) / 3 ? 1 : 2);
+  const rateFor = (x: number, w: number) => RATES[Math.min(2, Math.floor((x / w) * 3))];
 
   const arpStep = () => {
     if (!arp) return;
-    const r = rect();
-    const rate = rateAt(arp.y, r.height);
+    const rate = rateFor(arp.x, arp.w);
     const L = loopSteps(project);
     const chord = arp.nextAbs !== null ? chordDegreeAt(project, ((arp.nextAbs % L) + L) % L) : transport.heardChord();
-    // Chord tones starting at or just below the finger.
-    const finger = pitchAt(arp.x, r.width).band + offset();
-    const base = chord + 7 * Math.floor((finger - chord) / 7);
+    // Chord tones starting at or just below the finger's note.
+    const base = chord + 7 * Math.floor((arp.deg - chord) / 7);
     const list: number[] = [];
     for (let o = 0; o < project.lead.arp.octaves; o++) list.push(base + 7 * o, base + 2 + 7 * o, base + 4 + 7 * o);
     list.push(base + 7 * project.lead.arp.octaves);
@@ -154,23 +168,23 @@ function playTab(body: HTMLElement, cleanups: (() => void)[]) {
     const t = arp.nextTime;
     const gateSteps = rate * project.lead.arp.gate;
     const v = playLead(deg, t, 0.8, 0.6);
-    if (stripBend) v.setPitch(stripBend, t);
+    if (stripBend) v.setPitch(stripBend, t, 0.003);
     arpVoices.add(v);
     const end = t + gateSteps * transport.stepDur;
     v.release(end);
     setTimeout(() => arpVoices.delete(v), Math.max(0, (end - engine.now) * 1000 + 50));
     if (arp.nextAbs !== null) transport.recordArpNote(arp.nextAbs, gateSteps, deg, 0.8);
 
-    const orb = ringFor.get(arp.id);
-    if (orb) setTimeout(() => orb.animate([{ transform: 'translate(-50%,-50%) scale(1.25)' }, { transform: 'translate(-50%,-50%) scale(1)' }], { duration: 120 }), Math.max(0, (t - engine.now + engine.outputDelay) * 1000));
+    const orb = rings.get(arp.id);
+    if (orb) setTimeout(() => orb.animate([{ transform: 'translate(-50%,-50%) scale(1.2)' }, { transform: 'translate(-50%,-50%) scale(1)' }], { duration: 120 }), Math.max(0, (t - engine.now + engine.outputDelay) * 1000));
 
     arp.nextTime += rate * transport.stepDur;
     if (arp.nextAbs !== null) arp.nextAbs += rate;
   };
 
-  const startArp = (e: PointerEvent, x: number, y: number) => {
-    const r = rect();
-    const rate = rateAt(y, r.height);
+  const startArp = (e: PointerEvent) => {
+    const { x, y, row, deg, w } = locate(e);
+    const rate = rateFor(x, w);
     let nextTime = engine.now + 0.005;
     let nextAbs: number | null = null;
     if (transport.playing) {
@@ -178,12 +192,11 @@ function playTab(body: HTMLElement, cleanups: (() => void)[]) {
       nextTime = g.time;
       nextAbs = g.abs;
     }
-    arp = { id: e.pointerId, x, y, k: 0, nextTime, nextAbs, timer: 0 };
+    arp = { id: e.pointerId, row, deg, x, w, k: 0, nextTime, nextAbs, timer: 0 };
     const tickArp = () => { while (arp && arp.nextTime < engine.now + 0.08) arpStep(); };
     arp.timer = window.setInterval(tickArp, 20);
     tickArp();
-    const orb = placeRing(e.pointerId, x, y, 'orb');
-    orb.textContent = PATTERN_LABEL[project.lead.arp.pattern];
+    placeRing(e.pointerId, x, y, 'orb').textContent = PATTERN_LABEL[project.lead.arp.pattern];
   };
 
   const stopArp = () => {
@@ -199,36 +212,37 @@ function playTab(body: HTMLElement, cleanups: (() => void)[]) {
     e.preventDefault();
     engine.ensure();
     field.setPointerCapture(e.pointerId);
-    const r = rect();
-    const x = e.clientX - r.left, y = e.clientY - r.top;
     if (arpMode) {
-      if (!arp) startArp(e, x, y);
+      if (!arp) startArp(e);
       else if (twistId === -1) twistId = e.pointerId;
       return;
     }
-    const { band, midi } = pitchAt(x, r.width);
-    const voice = playLead(band + offset(), engine.now, 0.8, 1 - y / r.height);
-    const n: Held = { voice, band, glide: midi - midiOf(band), startAbs: transport.canRecord ? transport.absForEvent(e) : null, bends: [] };
+    const { x, y, row, idx, deg } = locate(e);
+    const voice = playLead(deg, engine.now, 0.85, 0.6);
+    const tile = tileEls[row][idx];
+    tile?.classList.add('held');
+    const n: Held = { voice, row, base: deg, cur: deg, tile, y0: y, glide: 0, bend: 0, startAbs: transport.canRecord ? transport.absForEvent(e) : null, bends: [] };
     held.set(e.pointerId, n);
-    if (stripBend) pushBend(n);
+    if (stripBend) pitch(n, 0.003);
     placeRing(e.pointerId, x, y);
   });
 
-  field.addEventListener('pointermove', (e) => {
-    const r = rect();
-    const x = e.clientX - r.left, y = e.clientY - r.top;
+  onMove(field, (e) => {
     if (arpMode) {
       if (arp && e.pointerId === arp.id) {
-        arp.x = x; arp.y = y;
+        const { x, y, deg, w } = locate(e, arp.row);
+        arp.x = x; arp.w = w; arp.deg = deg;
         placeRing(arp.id, x, y);
       } else if (arp && e.pointerId === twistId) {
         // Second finger: its angle around the orb picks the pattern.
-        const ang = Math.atan2(y - arp.y, x - arp.x);
+        const orb = rings.get(arp.id);
+        if (!orb) return;
+        const r = field.getBoundingClientRect();
+        const ang = Math.atan2(e.clientY - r.top - parseFloat(orb.style.top), e.clientX - r.left - arp.x);
         const p = PATTERNS[Math.floor(((ang + Math.PI) / (2 * Math.PI)) * 4) % 4];
         if (p !== project.lead.arp.pattern) {
           update((pr) => { pr.lead.arp.pattern = p; });
-          const orb = ringFor.get(arp.id);
-          if (orb) orb.textContent = PATTERN_LABEL[p];
+          orb.textContent = PATTERN_LABEL[p];
           renderTop();
         }
       }
@@ -236,9 +250,19 @@ function playTab(body: HTMLElement, cleanups: (() => void)[]) {
     }
     const n = held.get(e.pointerId);
     if (!n) return;
-    n.glide = pitchAt(x, r.width).midi - midiOf(n.band);
-    pushBend(n);
-    n.voice.setBrightness(1 - y / r.height, engine.now);
+    const { x, y, idx, deg } = locate(e, n.row);
+    let glideTime = 0.003;
+    if (deg !== undefined && deg !== n.cur) {
+      // Glide (quick portamento) to the new tile.
+      n.cur = deg;
+      n.glide = midiOf(deg) - midiOf(n.base);
+      n.tile?.classList.remove('held');
+      n.tile = tileEls[n.row][idx];
+      n.tile?.classList.add('held');
+      glideTime = 0.025;
+    }
+    n.bend = Math.max(-1, Math.min(1, (n.y0 - y) / BEND_PX)) * project.lead.bendRange;
+    pitch(n, glideTime);
     placeRing(e.pointerId, x, y);
   });
 
@@ -249,18 +273,22 @@ function playTab(body: HTMLElement, cleanups: (() => void)[]) {
     if (!n) return;
     held.delete(e.pointerId);
     n.voice.release(engine.now);
-    if (n.startAbs !== null) transport.recordMelodic('lead', n.startAbs, transport.absForEvent(e), n.band + offset(), 0.8, n.bends);
+    n.tile?.classList.remove('held');
+    if (n.startAbs !== null) transport.recordMelodic('lead', n.startAbs, transport.absForEvent(e), n.base, 0.85, n.bends);
     dropRing(e.pointerId);
   };
   field.addEventListener('pointerup', up);
   field.addEventListener('pointercancel', up);
 
-  // Light up bands as the loop plays the lead.
+  // Light up tiles as the loop plays the lead.
   cleanups.push(transport.onHit((track, t, degree) => {
     if (track !== 'lead') return;
-    const i = degree - offset();
-    if (i < 0 || i >= BANDS) return;
-    setTimeout(() => bands[i].animate([{ filter: 'brightness(0.85)' }, { filter: 'none' }], { duration: 220 }), Math.max(0, (t - engine.now + engine.outputDelay) * 1000));
+    setTimeout(() => {
+      for (const row of [0, 1]) {
+        const i = rowDegrees[row].indexOf(degree);
+        if (i >= 0) tileEls[row][i]?.animate([{ filter: 'brightness(0.85)' }, { filter: 'none' }], { duration: 220 });
+      }
+    }, Math.max(0, (t - engine.now + engine.outputDelay) * 1000));
   }));
 }
 
@@ -271,7 +299,7 @@ function setTab(body: HTMLElement) {
     engine.ensure();
     playLead(transport.heardChord() + 7, engine.now, 0.8).release(engine.now + 0.5);
   };
-  const octs = h('div', { class: 'segs' }, h('span', { class: 'mono muted small', text: 'octaves' }));
+  const octs = h('div', { class: 'segs' });
   const renderOcts = () => octs.replaceChildren(h('span', { class: 'mono muted small', text: 'octaves' }), ...([1, 2] as const).map((o) =>
     h('button', { class: `seg ${project.lead.arp.octaves === o ? 'on' : ''}`, text: String(o), onClick: () => { update((p) => { p.lead.arp.octaves = o; }); renderOcts(); } })));
   renderOcts();
