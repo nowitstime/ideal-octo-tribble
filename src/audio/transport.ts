@@ -1,7 +1,9 @@
 // Loop clock: a lookahead scheduler that queues notes slightly ahead on the
 // audio clock (sample-accurate playback), plus helpers for recording live input.
 import { engine, type Voice } from './engine';
-import { project, loopSteps, update, chordDegreeAt, type ChordNote, type BendPoint, type TrackId } from '../state';
+import { project, loopSteps, loopTicks, update, chordDegreeAt, type ChordNote, type BendPoint, type TrackId, type Project } from '../state';
+import { TPS, stepsToTicks, swingTicks, snap, wrap } from '../ticks';
+import { audible, passIndex, replaceSpan } from '../takes';
 import { chordMidis, bassMidi, leadMidi, type Mods } from '../theory';
 import { CHORD_PRESETS, BASS_PRESETS, LEAD_PRESETS, presetByName } from './presets';
 
@@ -27,6 +29,13 @@ class Transport {
   /** Absolute step (since play started) up to which notes are queued. */
   private scheduledUntil = 0;
   private timer = 0;
+  /** Absolute step where the current recording began; each loop length after it is a new pass. */
+  private armAbs = 0;
+  /** Pass index → take id for the current recording. */
+  private passTakes = new Map<number, number>();
+  private maxTake = 0;
+  /** Replace mode: where each take started sweeping over a track (absolute ticks). */
+  private sweeps = new Map<string, number>();
   private hitListeners = new Set<HitListener>();
   private stateListeners = new Set<() => void>();
 
@@ -52,10 +61,14 @@ class Transport {
     this.hitListeners.forEach((f) => f(track, t, detail));
   }
 
-  start() {
+  /** Start playback, optionally after a bar of count-in clicks. */
+  start(countIn = false) {
     const ctx = engine.ensure();
     if (this.playing) return;
-    this.startTime = ctx.currentTime + 0.06;
+    const t0 = ctx.currentTime + 0.06;
+    const pre = countIn ? 16 : 0;
+    for (let s = 0; s < pre; s += 4) engine.click(t0 + s * this.stepDur, s === 0);
+    this.startTime = t0 + pre * this.stepDur;
     this.scheduledUntil = 0;
     this.playing = true;
     this.timer = window.setInterval(() => this.tick(), TICK_MS);
@@ -75,15 +88,43 @@ class Transport {
     else this.start();
   }
 
-  /** Record button: arms recording and starts playback if needed. */
+  /**
+   * Record button: arms recording and starts playback if needed. From
+   * stopped, with count-in on, one bar of clicks plays first and recording
+   * starts on the 1.
+   */
   toggleRecord() {
     if (this.recording) {
       this.recording = false;
     } else {
+      this.passTakes.clear();
+      this.sweeps.clear();
+      if (!this.playing) {
+        this.start(project.countIn);
+        this.armAbs = 0;
+      } else {
+        this.armAbs = Math.max(0, this.heardAbs());
+      }
       this.recording = true;
-      if (!this.playing) this.start();
     }
     this.emitState();
+  }
+
+  /** Absolute step of what is being heard right now (negative during count-in). */
+  heardAbs(): number {
+    if (!this.playing || !engine.ctx) return 0;
+    return this.absAt(engine.ctx.currentTime - engine.outputDelay);
+  }
+
+  /** Count-in beat being heard (1–4), or 0 when not counting in. */
+  countInBeat(): number {
+    const a = this.heardAbs();
+    return this.playing && a < 0 ? Math.min(4, Math.floor((a + 16) / 4) + 1) : 0;
+  }
+
+  /** Which pass of the current recording is being heard (1-based), or 0. */
+  passNumber(): number {
+    return this.recording && this.playing ? passIndex(this.heardAbs(), this.armAbs, loopSteps(project)) + 1 : 0;
   }
 
   /** Keep the playhead continuous when the tempo changes mid-loop. */
@@ -109,12 +150,12 @@ class Transport {
   /** Loop position (in steps) of what is being heard right now. */
   heardStep(): number {
     if (!this.playing || !engine.ctx) return 0;
-    return mod(this.absAt(engine.ctx.currentTime - engine.outputDelay), loopSteps(project));
+    return mod(Math.max(0, this.heardAbs()), loopSteps(project));
   }
 
   /** Chord degree being heard now; when stopped, the progression's first chord. */
   heardChord(): number {
-    return this.playing ? chordDegreeAt(project, this.heardStep()) : project.progression[0];
+    return this.playing ? chordDegreeAt(project, this.heardStep() * TPS) : project.progression[0];
   }
 
   /** Next grid point (multiple of `rate` steps) after `t`, for synced arps. */
@@ -123,80 +164,98 @@ class Transport {
     return { abs, time: this.timeOf(abs) };
   }
 
-  private swing(step: number): number {
-    const r = Math.round(step);
-    if (Math.abs(step - r) > 0.01 || r % 2 === 0) return 0;
-    return project.drums.swing * this.stepDur * 0.5;
+  /** Seconds per tick. */
+  get tickDur(): number {
+    return this.stepDur / TPS;
+  }
+
+  /** Swing delay in seconds for a note at `tick`. */
+  private swing(tick: number): number {
+    return swingTicks(tick, project.drums.swing) * this.tickDur;
   }
 
   private applyBend(v: Voice, bend: BendPoint[] | undefined, t: number) {
     if (!bend) return;
-    for (const b of bend) v.setPitch(b.v, t + b.t * this.stepDur, 0.008);
+    for (const b of bend) v.setPitch(b.v, t + b.t * this.tickDur, 0.008);
   }
 
   private tick() {
     const ctx = engine.ctx;
     if (!ctx) return;
+    // One-pass recording: stop recording once a whole loop has been heard.
+    if (this.recording && project.oneShot && this.heardAbs() >= this.armAbs + loopSteps(project)) {
+      this.recording = false;
+      this.emitState();
+    }
     const a = this.scheduledUntil;
     const b = this.absAt(ctx.currentTime + LOOKAHEAD);
     if (b <= a) return;
     const L = loopSteps(project);
+    const LT = loopTicks(project);
+    const aT = a * TPS, bT = b * TPS;
     const { drums, chords, bass, lead } = project;
 
     for (let k = Math.floor(a / L); k <= Math.floor((b - 1e-9) / L); k++) {
-      const base = k * L;
-      // Returns the absolute step if this note starts inside the window.
-      const due = (n: { step: number; skipAbs?: number }): number | null => {
-        if (n.step >= L) return null;
-        const abs = base + n.step;
-        if (abs < a || abs >= b) return null;
+      const base = k * LT;
+      // Returns the absolute tick if this note starts inside the window.
+      let muted: number[] = [];
+      const due = (n: { tick: number; take?: number; skipAbs?: number }): number | null => {
+        if (n.tick >= LT || !audible(n, muted)) return null;
+        const abs = base + n.tick;
+        if (abs < aT || abs >= bT) return null;
         if (n.skipAbs === abs) { n.skipAbs = undefined; return null; }
         return abs;
       };
+      const at = (absTick: number) => this.timeOf(absTick / TPS);
 
       if (!drums.muted) {
+        muted = drums.mutedTakes;
         for (const n of drums.notes) {
           const abs = due(n);
           if (abs === null) continue;
-          const t = this.timeOf(abs) + this.swing(n.step);
+          const t = at(abs) + this.swing(n.tick);
           engine.drum(n.pad, t, n.vel, drums.pads[n.pad], drums.kit);
           this.hit('drums', t, n.pad);
         }
       }
       if (!chords.muted) {
+        muted = chords.mutedTakes;
         for (const n of chords.notes) {
           const abs = due(n);
           if (abs === null) continue;
-          const t = this.timeOf(abs);
-          playChordNote(n, t).release(t + Math.min(n.len, L) * this.stepDur);
+          const t = at(abs);
+          playChordNote(n, t).release(t + Math.min(n.len, LT) * this.tickDur);
           this.hit('chords', t, n.degree);
         }
       }
       if (!bass.muted) {
+        muted = bass.mutedTakes;
         for (const n of bass.notes) {
           const abs = due(n);
           if (abs === null) continue;
-          const t = this.timeOf(abs) + this.swing(n.step);
-          const v = playBass(chordDegreeAt(project, n.step), n.tone, t, n.vel);
+          const t = at(abs) + this.swing(n.tick);
+          const v = playBass(chordDegreeAt(project, n.tick), n.tone, t, n.vel);
           this.applyBend(v, n.bend, t);
-          v.release(t + Math.min(n.len, L) * this.stepDur);
+          v.release(t + Math.min(n.len, LT) * this.tickDur);
           this.hit('bass', t, n.tone);
         }
       }
       if (!lead.muted) {
+        muted = lead.mutedTakes;
         for (const n of lead.notes) {
           const abs = due(n);
           if (abs === null) continue;
-          const t = this.timeOf(abs) + this.swing(n.step);
+          const t = at(abs) + this.swing(n.tick);
           const v = playLead(n.degree, t, n.vel);
           this.applyBend(v, n.bend, t);
-          v.release(t + Math.min(n.len, L) * this.stepDur);
+          v.release(t + Math.min(n.len, LT) * this.tickDur);
           this.hit('lead', t, n.degree);
         }
       }
       if (project.click) {
+        const kS = k * L;
         for (let s = 0; s < L; s += 4) {
-          const abs = base + s;
+          const abs = kS + s;
           if (abs >= a && abs < b) engine.click(this.timeOf(abs), s % 16 === 0);
         }
       }
@@ -219,38 +278,63 @@ class Transport {
     return this.recording && this.playing && !!engine.ctx;
   }
 
-  /** If a recorded note lands in audio not yet queued it would sound twice; skip that copy. */
-  private skipFor(abs: number): number | undefined {
-    return abs >= this.scheduledUntil ? abs : undefined;
+  /**
+   * If a recorded note lands in audio not yet queued it would sound twice;
+   * mark that copy (by absolute tick) to be skipped once.
+   */
+  private skipFor(absTick: number): number | undefined {
+    return absTick >= this.scheduledUntil * TPS ? absTick : undefined;
+  }
+
+  /**
+   * Replace mode: clear what a track had wherever this take has played over
+   * it, from the take's first note on that track to the end of this one.
+   */
+  private replaceOver<T extends { tick: number; len?: number; take?: number }>(
+    notes: T[], take: number, key: string, startTick: number, endTick: number, match?: (n: T) => boolean,
+  ): T[] {
+    if (project.recMode !== 'replace') return notes;
+    const k = `${take}:${key}`;
+    const from = this.sweeps.get(k) ?? startTick;
+    this.sweeps.set(k, from);
+    return replaceSpan(notes, take, from, Math.max(endTick, from + 1), loopTicks(project), match);
   }
 
   /** Record a drum hit (call when a pad is played live). */
   recordDrum(e: { timeStamp: number }, pad: number, vel: number) {
     if (!this.canRecord) return;
-    const L = loopSteps(project);
-    let abs = this.absForEvent(e);
-    if (project.quantize) abs = Math.round(abs);
-    const step = mod(abs, L);
+    const LT = loopTicks(project);
+    const absSteps = this.absForEvent(e);
+    if (absSteps < -0.5) return; // still counting in
+    let abs = Math.max(0, stepsToTicks(absSteps));
+    if (project.quantize) abs = snap(abs, TPS);
+    const tick = wrap(abs, LT);
     const skipAbs = this.skipFor(abs);
-    update((p) => {
+    this.commit((p, take) => {
+      p.drums.notes = this.replaceOver(p.drums.notes, take, `drums:${pad}`, abs, abs + 1, (n) => n.pad === pad);
       if (project.quantize) {
-        const same = p.drums.notes.find((n) => n.pad === pad && Math.abs(n.step - step) < 0.01);
+        const same = p.drums.notes.find((n) => n.pad === pad && n.tick === tick);
         if (same) { same.vel = vel; same.skipAbs = skipAbs; return; }
       }
-      p.drums.notes.push({ step, pad, vel, skipAbs });
-    });
+      p.drums.notes.push({ tick, pad, vel, take, skipAbs });
+    }, absSteps);
   }
 
-  /** Snap a recorded note's start/length to the grid when quantize is on. */
+  /**
+   * Snap a recorded note's start/length (given in steps) to ticks, and to the
+   * grid when quantize is on. Returns null for notes that ended in the count-in.
+   */
   private place(startAbs: number, endAbs: number) {
-    const L = loopSteps(project);
-    let s = startAbs;
-    let len = Math.max(0.25, endAbs - startAbs);
+    if (endAbs <= 0) return null;
+    const LT = loopTicks(project);
+    let s = stepsToTicks(Math.max(0, startAbs));
+    let len = Math.max(TPS / 4, stepsToTicks(endAbs) - s);
     if (project.quantize) {
-      s = Math.round(s);
-      len = Math.max(1, Math.round(len));
+      s = snap(s, TPS);
+      len = Math.max(TPS, snap(len, TPS));
     }
-    return { abs: s, step: mod(s, L), len: Math.min(len, L) };
+    len = Math.min(len, LT);
+    return { abs: s, tick: wrap(s, LT), len };
   }
 
   /** Begin a live chord recording; returns a function to call on release. */
@@ -259,49 +343,79 @@ class Transport {
     const startAbs = this.absForEvent(e);
     return (endEvent: { timeStamp: number }) => {
       if (!this.playing) return;
-      const { step, len } = this.place(startAbs, this.absForEvent(endEvent));
-      update((p) => {
-        p.chords.notes = p.chords.notes.filter((n) => n.step + n.len <= step || n.step >= step + len);
-        p.chords.notes.push({ step, len, degree, inv, mods: { ...mods }, vel });
-      });
+      const at = this.place(startAbs, this.absForEvent(endEvent));
+      if (!at) return;
+      const { abs, tick, len } = at;
+      this.commit((p, take) => {
+        p.chords.notes = this.replaceOver(p.chords.notes, take, 'chords', abs, abs + len);
+        p.chords.notes = p.chords.notes.filter((n) => n.tick + n.len <= tick || n.tick >= tick + len);
+        p.chords.notes.push({ tick, len, degree, inv, mods: { ...mods }, vel, take });
+      }, startAbs);
     };
+  }
+
+  /**
+   * Apply a recorded note. Each loop pass since recording began gets its own
+   * take id, and its own undo step however long the pass lasts. `played` is
+   * where the note was actually played (steps, before quantizing).
+   */
+  private commit(fn: (p: Project, take: number) => void, played: number) {
+    const pass = passIndex(played, this.armAbs, loopSteps(project));
+    let take = this.passTakes.get(pass);
+    if (take === undefined) {
+      // Never reuse an id, even if an undo rolled lastTake back.
+      take = Math.max(project.lastTake, this.maxTake) + 1;
+      this.maxTake = take;
+      this.passTakes.set(pass, take);
+    }
+    const id = take;
+    update((p) => {
+      p.lastTake = Math.max(p.lastTake, id);
+      fn(p, id);
+    }, `take:${id}`);
   }
 
   /** Store a finished bass or lead note with its bend curve. */
   recordMelodic(track: 'bass' | 'lead', startAbs: number, endAbs: number, pitch: number, vel: number, bends: LiveBend[]) {
     if (!this.playing) return;
-    const { abs, step, len } = this.place(startAbs, endAbs);
+    const at = this.place(startAbs, endAbs);
+    if (!at) return;
+    const { abs, tick, len } = at;
     // Keep bends relative to when the note actually started; thin them out.
     const bend: BendPoint[] = [];
     for (const b of bends) {
-      const t = Math.max(0, b.abs - startAbs);
+      const t = Math.max(0, stepsToTicks(b.abs - startAbs));
       const last = bend[bend.length - 1];
-      if (!last || Math.abs(last.v - b.v) > 0.04 || t - last.t > 0.5) bend.push({ t: +t.toFixed(3), v: +b.v.toFixed(3) });
+      if (!last || Math.abs(last.v - b.v) > 0.04 || t - last.t > TPS / 2) bend.push({ t, v: +b.v.toFixed(3) });
     }
     const hasBend = bend.some((b) => Math.abs(b.v) > 0.05);
     const skipAbs = this.skipFor(abs);
-    update((p) => {
+    this.commit((p, take) => {
       if (track === 'bass') {
+        p.bass.notes = this.replaceOver(p.bass.notes, take, 'bass', abs, abs + len);
         // The bass is monophonic: a new note replaces whatever it overlaps.
-        p.bass.notes = p.bass.notes.filter((n) => n.step + n.len <= step || n.step >= step + len);
-        p.bass.notes.push({ step, len, tone: pitch, vel, bend: hasBend ? bend : undefined, skipAbs });
+        p.bass.notes = p.bass.notes.filter((n) => n.tick + n.len <= tick || n.tick >= tick + len);
+        p.bass.notes.push({ tick, len, tone: pitch, vel, bend: hasBend ? bend : undefined, take, skipAbs });
       } else {
-        p.lead.notes.push({ step, len, degree: pitch, vel, bend: hasBend ? bend : undefined, skipAbs });
+        p.lead.notes = this.replaceOver(p.lead.notes, take, 'lead', abs, abs + len);
+        p.lead.notes.push({ tick, len, degree: pitch, vel, bend: hasBend ? bend : undefined, take, skipAbs });
       }
-    });
+    }, startAbs);
   }
 
-  /** Store an arpeggiator note that was scheduled exactly on the grid. */
+  /** Store an arpeggiator note that was scheduled exactly on the grid (abs and len in steps). */
   recordArpNote(abs: number, len: number, degree: number, vel: number) {
-    if (!this.canRecord) return;
-    const L = loopSteps(project);
-    const step = mod(abs, L);
-    const skipAbs = this.skipFor(abs);
-    update((p) => {
-      const same = p.lead.notes.find((n) => n.degree === degree && Math.abs(n.step - step) < 0.01);
+    if (!this.canRecord || abs < 0) return;
+    const absTick = stepsToTicks(abs);
+    const lenTicks = Math.max(1, stepsToTicks(len));
+    const tick = wrap(absTick, loopTicks(project));
+    const skipAbs = this.skipFor(absTick);
+    this.commit((p, take) => {
+      p.lead.notes = this.replaceOver(p.lead.notes, take, 'lead', absTick, absTick + lenTicks);
+      const same = p.lead.notes.find((n) => n.degree === degree && n.tick === tick);
       if (same) { same.skipAbs = skipAbs; return; }
-      p.lead.notes.push({ step, len, degree, vel, skipAbs });
-    });
+      p.lead.notes.push({ tick, len: lenTicks, degree, vel, take, skipAbs });
+    }, abs);
   }
 }
 

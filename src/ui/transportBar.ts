@@ -1,7 +1,8 @@
-// Play / record / undo / redo and a loop progress line, shared by every screen.
+// Play / record / undo / redo, record options and a loop progress line,
+// shared by every screen.
 import { h, everyFrame } from './dom';
 import { transport } from '../audio/transport';
-import { project, loopSteps, undo, redo, canUndo, canRedo, subscribe } from '../state';
+import { project, loopSteps, undo, redo, canUndo, canRedo, subscribe, update } from '../state';
 
 const playIcon = '<svg width="18" height="20" viewBox="0 0 18 20" aria-hidden="true"><path d="M3 2 L16 10 L3 18 Z" fill="currentColor"/></svg>';
 const stopIcon = '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect width="16" height="16" fill="currentColor"/></svg>';
@@ -23,20 +24,41 @@ export function transportBar(big = false): { el: HTMLElement; destroy: () => voi
   const pos = h('span', { class: 'tb-pos' });
   const mode = h('span', { class: 'tb-mode' });
 
+  // Record options: overdub or replace, one pass only, count-in.
+  const recMode = h('button', { class: 'rec-opt', onClick: () => update((p) => { p.recMode = p.recMode === 'add' ? 'replace' : 'add'; }) });
+  const oneShot = h('button', { class: 'rec-opt', 'aria-label': 'Record one pass only', onClick: () => update((p) => { p.oneShot = !p.oneShot; }) });
+  const countIn = h('button', { class: 'rec-opt', 'aria-label': 'Count in one bar before recording', onClick: () => update((p) => { p.countIn = !p.countIn; }) });
+  const opts = h('div', { class: 'tb-opts' }, recMode, oneShot, countIn);
+
   const buttons = big ? [undoBtn, play, rec, redoBtn] : [play, rec, undoBtn, redoBtn];
   const el = h('div', { class: `transport ${big ? 'big' : ''}` },
     h('div', { class: 'tb-buttons' }, ...buttons),
+    opts,
     h('div', { class: 'tb-track' }, h('span', { class: 'tb-line' }), fill, dot),
     h('div', { class: 'tb-labels' }, mode, pos),
   );
+
+  // Count-in and pass number change without a state event, so this runs every frame.
+  const modeText = () => {
+    const beat = transport.countInBeat();
+    if (beat) return `count-in ${beat}`;
+    const pass = transport.passNumber();
+    if (pass) return big ? `recording pass ${pass}${project.quantize ? ' · quantized' : ''}` : `rec ${pass}${project.quantize ? ' · q' : ''}`;
+    return transport.playing ? (big ? 'playing' : 'play') : (big ? 'stopped' : 'stop');
+  };
 
   const sync = () => {
     play.innerHTML = transport.playing ? stopIcon : playIcon;
     play.setAttribute('aria-label', transport.playing ? 'Stop' : 'Play');
     rec.classList.toggle('on', transport.recording);
-    mode.textContent = big
-      ? (transport.recording ? (project.quantize ? 'recording · quantized' : 'recording') : transport.playing ? 'playing' : 'stopped')
-      : (transport.recording ? (project.quantize ? 'rec · q' : 'rec') : transport.playing ? 'play' : 'stop');
+    const replace = project.recMode === 'replace';
+    recMode.textContent = big ? (replace ? '↻ replace' : '+ overdub') : (replace ? '↻' : '+');
+    recMode.setAttribute('aria-label', replace ? 'Replace mode, tap for overdub' : 'Overdub mode, tap for replace');
+    recMode.classList.toggle('on', replace);
+    oneShot.textContent = '1×';
+    oneShot.classList.toggle('on', project.oneShot);
+    countIn.textContent = big ? 'count-in' : '••••';
+    countIn.classList.toggle('on', project.countIn);
     undoBtn.classList.toggle('off', !canUndo());
     redoBtn.classList.toggle('off', !canRedo());
   };
@@ -53,6 +75,7 @@ export function transportBar(big = false): { el: HTMLElement; destroy: () => voi
     const bars = `${project.bars} bar${project.bars > 1 ? 's' : ''}`;
     const at = `${Math.floor(s / 16) + 1}.${Math.floor((s % 16) / 4) + 1}`;
     pos.textContent = transport.playing ? (big ? `${at}  ·  ${bars}` : at) : bars;
+    mode.textContent = modeText();
   });
 
   return { el, destroy: () => { offState(); offProject(); stopFrame(); } };

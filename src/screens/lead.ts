@@ -3,7 +3,8 @@
 // up/down to bend. "Chord notes" shows only notes of the chord playing now.
 // In Arp mode, touching spawns an orb that arpeggiates the chord in time.
 import { h, everyFrame, onMove } from '../ui/dom';
-import { project, update, chordDegreeAt, loopSteps, type ArpPattern } from '../state';
+import { project, update, chordDegreeAt, type ArpPattern } from '../state';
+import { stepsToTicks } from '../ticks';
 import { transport, playLead, type LiveBend } from '../audio/transport';
 import { engine, type Voice } from '../audio/engine';
 import { LEAD_PRESETS } from '../audio/presets';
@@ -15,7 +16,8 @@ import { bendStrip } from '../ui/bendStrip';
 import { presetSwitch } from '../ui/presetSwitch';
 import { knob } from '../ui/knob';
 import { noteLane } from '../ui/noteLane';
-import { confirmButton } from './drums';
+import { passLines } from '../ui/passLines';
+import { confirmButton } from '../ui/confirm';
 
 const PATTERNS: ArpPattern[] = ['up', 'down', 'updown', 'random'];
 const PATTERN_LABEL: Record<ArpPattern, string> = { up: 'up', down: 'down', updown: 'up-down', random: 'random' };
@@ -53,8 +55,10 @@ function playTab(body: HTMLElement, cleanups: (() => void)[]) {
   body.append(h('div', { class: 'lead-top' }, modeTabs, h('div', { class: 'lead-top-right' }, notesToggle, oct)));
 
   const lane = noteLane('lead');
+  const passes = passLines('lead');
+  cleanups.push(passes.destroy);
   cleanups.push(lane.destroy);
-  body.append(lane.el, patternRow);
+  body.append(lane.el, passes.el, patternRow);
 
   // ---------- tiles ----------
   const rowEls = [h('div', { class: 'tile-row' }), h('div', { class: 'tile-row' })];
@@ -153,8 +157,7 @@ function playTab(body: HTMLElement, cleanups: (() => void)[]) {
   const arpStep = () => {
     if (!arp) return;
     const rate = rateFor(arp.x, arp.w);
-    const L = loopSteps(project);
-    const chord = arp.nextAbs !== null ? chordDegreeAt(project, ((arp.nextAbs % L) + L) % L) : transport.heardChord();
+    const chord = arp.nextAbs !== null ? chordDegreeAt(project, stepsToTicks(arp.nextAbs)) : transport.heardChord();
     // Chord tones starting at or just below the finger's note.
     const base = chord + 7 * Math.floor((arp.deg - chord) / 7);
     const list: number[] = [];

@@ -33,12 +33,12 @@ Everything from [IDEAS_FROM_POCKIMUSI.md](IDEAS_FROM_POCKIMUSI.md), put in order
 
 The groundwork that later phases need. Nothing new to play.
 
-- [ ] **Integer ticks.** Store note positions as whole ticks at 480 per quarter (120 per 1/16) instead of fractional 16th steps. Snapping, triplets, swing and bar changes then stay exact. Touches `state.ts`, `audio/transport.ts`, `ui/noteLane.ts` and every screen that writes notes.
-- [ ] **Project format v2 with migration.** Add `version: 2`. Old saves are converted on load (step × 120 = tick). Keep the old storage key readable once.
-- [ ] **Take id on every recorded note** (`take: number`). Unused until Phase 1, but it goes in now so saves don't need converting twice.
-- [ ] **A note's own data stays musical.** Pitched notes keep storing a degree or chord tone (as now) so they can re-fit when chords change.
-- [ ] **Tests.** Add Vitest for the pure logic: theory, tick snapping, swing, save migration. Run them with `npm test`.
-- [ ] **`feedback/` folder:** one file per screen (map, drums, chords, bass, lead, progression) plus a README with a session log.
+- [x] **Integer ticks.** Store note positions as whole ticks at 480 per quarter (120 per 1/16) instead of fractional 16th steps. Snapping, triplets, swing and bar changes then stay exact. Touches `state.ts`, `audio/transport.ts`, `ui/noteLane.ts` and every screen that writes notes.
+- [x] **Project format v2 with migration.** Add `version: 2`. Old saves are converted on load (step × 120 = tick). Keep the old storage key readable once.
+- [x] **Take id on every recorded note** (`take: number`). Unused until Phase 1, but it goes in now so saves don't need converting twice.
+- [x] **A note's own data stays musical.** Pitched notes keep storing a degree or chord tone (as now) so they can re-fit when chords change.
+- [x] **Tests.** Add Vitest for the pure logic: theory, tick snapping, swing, save migration. Run them with `npm test`.
+- [x] **`feedback/` folder:** one file per screen (map, drums, chords, bass, lead, progression) plus a README with a session log.
 
 **Done when:** an old project loads unchanged, everything plays and records as before, and the tests pass.
 
@@ -46,12 +46,12 @@ The groundwork that later phases need. Nothing new to play.
 
 ## Phase 1 · No more loop slop
 
-- [ ] **Takes per loop pass.** While recording, each full pass of the loop is a new take. Undo removes the last pass, not a time window. (The snapshot undo stays for edits like knobs and deletes.)
-- [ ] **Pass lines.** Under each track on its page, thin stacked lines, one per take. Tap one to select it, tap ✕ to delete that pass. Mute a pass to compare.
-- [ ] **Overdub / replace toggle** next to record: `+` adds; `↻` replaces whatever the track had wherever you play over it during the pass.
-- [ ] **One-pass record** (`1×`): record exactly one loop, then stop recording on its own (playback carries on).
-- [ ] **Count-in.** Record while stopped → one bar of clicks → recording starts on the 1. On/off in the transport.
-- [ ] **The same clear everywhere.** Each instrument page and each string on the map gets the same clear control (tap, then confirm with a second tap on the same spot; no hold).
+- [x] **Takes per loop pass.** While recording, each full pass of the loop is a new take. Undo removes the last pass, not a time window. (The snapshot undo stays for edits like knobs and deletes.)
+- [x] **Pass lines.** Under each track on its page, thin stacked lines, one per take. Tap one to select it, tap ✕ to delete that pass. Mute a pass to compare.
+- [x] **Overdub / replace toggle** next to record: `+` adds; `↻` replaces whatever the track had wherever you play over it during the pass.
+- [x] **One-pass record** (`1×`): record exactly one loop, then stop recording on its own (playback carries on).
+- [x] **Count-in.** Record while stopped → one bar of clicks → recording starts on the 1. On/off in the transport.
+- [x] **The same clear everywhere.** Each instrument page and each string on the map gets the same clear control (tap, then confirm with a second tap on the same spot; no hold).
 
 **Play test:** build a loop with five or more overdubs. Can you always get back to something good? Does replace feel natural?
 

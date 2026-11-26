@@ -1,46 +1,38 @@
 // A compact view of what's recorded on a track: one row per bar, notes as
-// pastel blocks. Tap a note to delete it; "Clear" (tap twice) empties the track.
+// pastel blocks. Tap a note to delete it. Notes from muted passes are faded.
 import { h, everyFrame } from './dom';
 import { project, update, subscribe, loopSteps, chordDegreeAt } from '../state';
 import { transport } from '../audio/transport';
 import { TONE_OFFSETS } from '../theory';
 import { degreeColor } from './colors';
+import { TPS } from '../ticks';
+import { audible } from '../takes';
 
 type Melodic = 'chords' | 'bass' | 'lead';
 
-interface Block { i: number; step: number; len: number; color: string; y: number }
+interface Block { i: number; step: number; len: number; color: string; y: number; muted: boolean }
 
 export function noteLane(track: Melodic): { el: HTMLElement; destroy: () => void } {
   const lane = h('div', { class: 'note-lane', 'aria-label': 'Recorded notes, tap one to delete it' });
   const head = h('span', { class: 'lane-head' });
-  const clear = h('button', { class: 'text-btn', text: 'clear' });
-  let armed = 0;
-  clear.addEventListener('click', () => {
-    if (armed) {
-      clearTimeout(armed); armed = 0;
-      clear.textContent = 'clear'; clear.classList.remove('warn');
-      update((p) => { p[track].notes = []; });
-    } else {
-      clear.textContent = 'tap again to clear'; clear.classList.add('warn');
-      armed = window.setTimeout(() => { armed = 0; clear.textContent = 'clear'; clear.classList.remove('warn'); }, 2500);
-    }
-  });
   const count = h('span');
   const el = h('div', { class: 'lane-wrap' },
-    h('div', { class: 'lane-labels mono muted small' }, count, clear),
+    h('div', { class: 'lane-labels mono muted small' }, count),
     lane);
 
   let blocks: Block[] = [];
 
   function blocksFor(): Block[] {
-    const notes = project[track].notes as { step: number; len: number; degree?: number; tone?: number }[];
+    const notes: { tick: number; len: number; take?: number; degree?: number; tone?: number }[] = project[track].notes;
+    const mutedTakes = project[track].mutedTakes;
     // Vertical position by pitch for bass/lead so melodies read as shapes.
     const pitch = (n: (typeof notes)[number]) => (track === 'lead' ? n.degree ?? 0 : track === 'bass' ? n.tone ?? 0 : 0);
     const ps = notes.map(pitch);
     const lo = Math.min(...ps, 0), hi = Math.max(...ps, 1);
     return notes.map((n, i) => {
-      const deg = track === 'bass' ? chordDegreeAt(project, n.step) + TONE_OFFSETS[n.tone ?? 0] : n.degree ?? 0;
-      return { i, step: n.step, len: n.len, color: degreeColor(deg), y: track === 'chords' ? 0.5 : 1 - (pitch(n) - lo) / (hi - lo || 1) };
+      const deg = track === 'bass' ? chordDegreeAt(project, n.tick) + TONE_OFFSETS[n.tone ?? 0] : n.degree ?? 0;
+      // The lane draws in steps.
+      return { i, step: n.tick / TPS, len: n.len / TPS, muted: !audible(n, mutedTakes), color: degreeColor(deg), y: track === 'chords' ? 0.5 : 1 - (pitch(n) - lo) / (hi - lo || 1) };
     });
   }
 
@@ -56,7 +48,7 @@ export function noteLane(track: Melodic): { el: HTMLElement; destroy: () => void
       const w = Math.min(Math.max(b.len, 0.6) / 16, 1 - x);
       rows[bar].append(h('span', {
         class: 'note-block',
-        style: { left: `${x * 100}%`, width: `calc(${w * 100}% - 2px)`, top: `${4 + b.y * 10}px`, background: b.color },
+        style: { left: `${x * 100}%`, width: `calc(${w * 100}% - 2px)`, top: `${4 + b.y * 10}px`, background: b.color, opacity: b.muted ? '0.3' : '' },
       }));
     }
     lane.replaceChildren(...rows, head);
