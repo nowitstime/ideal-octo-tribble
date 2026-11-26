@@ -3,6 +3,7 @@
 // pull it off its line to bend, or use the bend strip on the edge.
 import { h, svg, everyFrame, onMove } from '../ui/dom';
 import { noteLane } from '../ui/noteLane';
+import { passLines } from '../ui/passLines';
 import { project, update, rootLine } from '../state';
 import { transport, playBass, type LiveBend } from '../audio/transport';
 import { engine, type Voice } from '../audio/engine';
@@ -14,7 +15,7 @@ import { transportBar } from '../ui/transportBar';
 import { bendStrip } from '../ui/bendStrip';
 import { presetSwitch } from '../ui/presetSwitch';
 import { knob } from '../ui/knob';
-import { confirmButton } from './drums';
+import { confirmButton } from '../ui/confirm';
 
 /** Chord chosen by tapping a chip while stopped (index into the progression). */
 let manualIdx = 0;
@@ -44,8 +45,10 @@ function playTab(body: HTMLElement, cleanups: (() => void)[]) {
   });
   body.append(h('div', { class: 'chip-row' }, h('div', { class: 'mini-prog' }, ...chips), h('span', { class: 'mono muted small', text: 'follows the chords' })));
   const lane = noteLane('bass');
+  const passes = passLines('bass');
+  cleanups.push(passes.destroy);
   cleanups.push(lane.destroy);
-  body.append(lane.el);
+  body.append(lane.el, passes.el);
 
   // ---------- the string ----------
   const zones = Array.from({ length: ZONES }, (_, i) =>

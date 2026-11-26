@@ -10,6 +10,8 @@ import { knob } from '../ui/knob';
 import { presetSwitch } from '../ui/presetSwitch';
 import { KITS } from '../audio/presets';
 import { TPS } from '../ticks';
+import { confirmButton } from '../ui/confirm';
+import { passLines } from '../ui/passLines';
 
 let selectedPad = 0;
 
@@ -28,8 +30,10 @@ function playTab(body: HTMLElement, cleanups: (() => void)[]) {
   const laneLabel = h('span');
   const lane = h('div', { class: 'lane' });
   const head = h('span', { class: 'lane-head' });
-  const clearLane = confirmButton('clear', () => update((p) => { p.drums.notes = p.drums.notes.filter((n) => n.pad !== selectedPad); }), 'text-btn');
-  body.append(h('div', { class: 'lane-labels mono muted small' }, laneLabel, clearLane), lane);
+  const clearLane = confirmButton('clear pad', () => update((p) => { p.drums.notes = p.drums.notes.filter((n) => n.pad !== selectedPad); }), 'text-btn');
+  const passes = passLines('drums');
+  cleanups.push(passes.destroy);
+  body.append(h('div', { class: 'lane-labels mono muted small' }, laneLabel, clearLane), lane, passes.el);
 
   function renderLane() {
     laneLabel.textContent = `${PAD_NAMES[selectedPad]} · tap a bead to toggle`;
@@ -168,24 +172,4 @@ function setTab(body: HTMLElement, cleanups: (() => void)[]) {
   renderSelector();
   renderVoice();
   renderKit();
-}
-
-/** A button that asks for a second tap before doing something destructive. */
-export function confirmButton(label: string, action: () => void, cls = 'chip'): HTMLButtonElement {
-  const b = h('button', { class: cls, text: label });
-  let armed = 0;
-  b.addEventListener('click', () => {
-    if (armed) {
-      clearTimeout(armed);
-      armed = 0;
-      b.textContent = label;
-      b.classList.remove('warn');
-      action();
-    } else {
-      b.textContent = 'Tap again to confirm';
-      b.classList.add('warn');
-      armed = window.setTimeout(() => { armed = 0; b.textContent = label; b.classList.remove('warn'); }, 2500);
-    }
-  });
-  return b;
 }

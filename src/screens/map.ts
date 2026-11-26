@@ -9,6 +9,7 @@ import { chordInfo, keyName } from '../theory';
 import { degreeColor, TRACK_COLOR } from '../ui/colors';
 import { transportBar } from '../ui/transportBar';
 import { TPS } from '../ticks';
+import { clearControl } from '../ui/confirm';
 
 interface Slot {
   id: string;
@@ -56,6 +57,7 @@ export function mapScreen(root: HTMLElement): () => void {
 
   const squares = new Map<string, HTMLElement>();
   const stringPaths = new Map<string, SVGPathElement>();
+  const clears = new Map<string, HTMLElement>();
   for (const s of SLOTS) {
     const active = !!s.route;
     const sq = h(active ? 'a' : 'div', {
@@ -79,6 +81,11 @@ export function mapScreen(root: HTMLElement): () => void {
     }
     squares.set(s.id, sq);
     area.append(sq);
+    if (active) {
+      const c = clearControl(s.id as TrackId, s.name.toLowerCase(), 'on-string');
+      clears.set(s.id, c);
+      area.append(c);
+    }
   }
 
   // ---------- controls ----------
@@ -139,6 +146,19 @@ export function mapScreen(root: HTMLElement): () => void {
       });
       stringPaths.set(slot.id, p);
       strings.append(p);
+      // The string's clear sits on it, nearer the square than the ring. It's
+      // anchored by its ✕ so the confirm label grows away from the square.
+      const c = clears.get(slot.id);
+      if (c) {
+        const t = 0.3, u = 1 - t;
+        const bez = (p0: number, p1: number, p2: number, p3: number) => u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3;
+        const mx = bez(x0, x0 + 14 * dir, x1 + 14 * Math.cos(a), x1);
+        const my = bez(y0, y0, y1 + 14 * Math.sin(a), y1);
+        c.classList.toggle('grow-right', left);
+        Object.assign(c.style, left
+          ? { left: `${mx - 14}px`, right: '', top: `${my - 14}px` }
+          : { right: `${W - mx - 14}px`, left: '', top: `${my - 14}px` });
+      }
       if (slot.route) {
         strings.append(svg('circle', { class: 'node', r: 3.5, cx: x0, cy: y0 }), svg('circle', { class: 'node', r: 3.5, cx: x1, cy: y1 }));
       }

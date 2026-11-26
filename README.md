@@ -12,7 +12,8 @@ A touch-first loop maker for the phone, built as a PWA (Vite + TypeScript + Web 
 - **Bend strip** on the bass and lead pages: a spring-back pitch wheel for the other hand. Recorded notes keep their bends.
 - **Sounds**: drum kits (Pulse, Acoustic-ish, Lo-fi, Minimal, Big room) and presets for chords (pad, keys, pluck, organ, strings, bells), bass (sub, round, acid, fuzz) and lead (glass, saw, square, flute), all synthesized.
 - **Progression**: pick a key (circle of fifths), major/minor and a preset; the progression is drawn as a shape on the circle of chords. "Use" refills the chords track.
-- Recording overdubs into the loop, corrected for touch and output latency and snapped to 1/16 when quantize is on. The project autosaves locally.
+- Recording into the loop, corrected for touch and output latency and snapped to 1/16 when quantize is on. Each loop pass you record is its own **take**: undo removes the last pass, and **pass lines** under each track let you mute a pass to compare or delete it. Record options in the transport: `+` overdub / `↻` replace (clears what you play over), `1×` (record one loop, then stop recording), and a one-bar **count-in** when recording from stopped.
+- **Clear** is the same everywhere: the ✕ on each instrument page and on each string on the map. Tap it, then tap again to confirm. The project autosaves locally.
 
 The latency test lives at `lab.html`.
 

@@ -16,7 +16,8 @@ import { bendStrip } from '../ui/bendStrip';
 import { presetSwitch } from '../ui/presetSwitch';
 import { knob } from '../ui/knob';
 import { noteLane } from '../ui/noteLane';
-import { confirmButton } from './drums';
+import { passLines } from '../ui/passLines';
+import { confirmButton } from '../ui/confirm';
 
 const PATTERNS: ArpPattern[] = ['up', 'down', 'updown', 'random'];
 const PATTERN_LABEL: Record<ArpPattern, string> = { up: 'up', down: 'down', updown: 'up-down', random: 'random' };
@@ -54,8 +55,10 @@ function playTab(body: HTMLElement, cleanups: (() => void)[]) {
   body.append(h('div', { class: 'lead-top' }, modeTabs, h('div', { class: 'lead-top-right' }, notesToggle, oct)));
 
   const lane = noteLane('lead');
+  const passes = passLines('lead');
+  cleanups.push(passes.destroy);
   cleanups.push(lane.destroy);
-  body.append(lane.el, patternRow);
+  body.append(lane.el, passes.el, patternRow);
 
   // ---------- tiles ----------
   const rowEls = [h('div', { class: 'tile-row' }), h('div', { class: 'tile-row' })];

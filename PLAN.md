@@ -46,12 +46,12 @@ The groundwork that later phases need. Nothing new to play.
 
 ## Phase 1 · No more loop slop
 
-- [ ] **Takes per loop pass.** While recording, each full pass of the loop is a new take. Undo removes the last pass, not a time window. (The snapshot undo stays for edits like knobs and deletes.)
-- [ ] **Pass lines.** Under each track on its page, thin stacked lines, one per take. Tap one to select it, tap ✕ to delete that pass. Mute a pass to compare.
-- [ ] **Overdub / replace toggle** next to record: `+` adds; `↻` replaces whatever the track had wherever you play over it during the pass.
-- [ ] **One-pass record** (`1×`): record exactly one loop, then stop recording on its own (playback carries on).
-- [ ] **Count-in.** Record while stopped → one bar of clicks → recording starts on the 1. On/off in the transport.
-- [ ] **The same clear everywhere.** Each instrument page and each string on the map gets the same clear control (tap, then confirm with a second tap on the same spot; no hold).
+- [x] **Takes per loop pass.** While recording, each full pass of the loop is a new take. Undo removes the last pass, not a time window. (The snapshot undo stays for edits like knobs and deletes.)
+- [x] **Pass lines.** Under each track on its page, thin stacked lines, one per take. Tap one to select it, tap ✕ to delete that pass. Mute a pass to compare.
+- [x] **Overdub / replace toggle** next to record: `+` adds; `↻` replaces whatever the track had wherever you play over it during the pass.
+- [x] **One-pass record** (`1×`): record exactly one loop, then stop recording on its own (playback carries on).
+- [x] **Count-in.** Record while stopped → one bar of clicks → recording starts on the 1. On/off in the transport.
+- [x] **The same clear everywhere.** Each instrument page and each string on the map gets the same clear control (tap, then confirm with a second tap on the same spot; no hold).
 
 **Play test:** build a loop with five or more overdubs. Can you always get back to something good? Does replace feel natural?
 

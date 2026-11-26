@@ -1,4 +1,6 @@
 import { h } from './dom';
+import { TRACKS, type TrackId } from '../state';
+import { clearControl } from './confirm';
 
 const backIcon = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 10H4M9 5l-5 5 5 5"/></svg>';
 
@@ -14,13 +16,16 @@ export function instrumentHeader(route: string, title: string, sub: string, tab:
         h('a', { href: `#/${route}/set`, class: tab === 'set' ? 'on' : '', text: 'Settings' }),
       ),
     ),
-    h('div', { class: 'inst-title' }, h('h1', { text: title }), h('span', { class: 'mono muted', text: sub })),
+    h('div', { class: 'inst-title' },
+      h('h1', { text: title }),
+      h('span', { class: 'mono muted', text: sub }),
+      TRACKS.includes(route as TrackId) ? clearControl(route as TrackId, title.toLowerCase()) : null),
   );
 }
 
 /** Update the small subtitle next to an instrument's title (e.g. after a sound change). */
 export function setSubtitle(text: string) {
-  const el = document.querySelector('.inst-title .mono');
+  const el = document.querySelector('.inst-title .mono.muted');
   if (el) el.textContent = text;
 }
 

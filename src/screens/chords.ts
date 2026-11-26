@@ -11,8 +11,9 @@ import { transportBar } from '../ui/transportBar';
 import { knob } from '../ui/knob';
 import { presetSwitch } from '../ui/presetSwitch';
 import { CHORD_PRESETS, presetByName } from '../audio/presets';
-import { confirmButton } from './drums';
+import { confirmButton } from '../ui/confirm';
 import { noteLane } from '../ui/noteLane';
+import { passLines } from '../ui/passLines';
 import { onMove } from '../ui/dom';
 
 let lastDegree = 0;
@@ -45,8 +46,10 @@ function playTab(body: HTMLElement, cleanups: (() => void)[]) {
   strip.append(...stripCells);
   body.append(strip);
   const lane = noteLane('chords');
+  const passes = passLines('chords');
+  cleanups.push(passes.destroy);
   cleanups.push(lane.destroy);
-  body.append(lane.el);
+  body.append(lane.el, passes.el);
 
   // ---------- columns ----------
   const grid = h('div', { class: 'chord-grid' });
