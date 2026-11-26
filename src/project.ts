@@ -2,6 +2,7 @@
 // No DOM or storage here, so it can be tested on its own.
 import type { Mode, Mods } from './theory';
 import { TPS, TICKS_PER_BAR, stepsToTicks, wrap } from './ticks';
+import { defaultRules, type DrumRule } from './drumRules';
 
 export const PROJECT_VERSION = 2;
 
@@ -82,6 +83,9 @@ export interface Project {
     muted: boolean;
     mutedTakes: number[];
     kit: string;
+    /** The written beat: one rule per sound (see drumRules.ts). */
+    rules: DrumRule[];
+    /** Hits played in on the old pads; still heard alongside the rules. */
     notes: DrumNote[];
     pads: PadParams[];
     swing: number; // 0..0.6
@@ -157,14 +161,6 @@ export function rootLine(bars: number): BassNote[] {
 }
 
 export function defaultProject(): Project {
-  const S = TPS;
-  const drums: DrumNote[] = [];
-  for (let bar = 0; bar < 2; bar++) {
-    const o = bar * 16;
-    drums.push({ tick: o * S, pad: 0, vel: 1 }, { tick: (o + 8) * S, pad: 0, vel: 0.9 }, { tick: (o + 10) * S, pad: 0, vel: 0.6 });
-    drums.push({ tick: (o + 4) * S, pad: 1, vel: 0.9 }, { tick: (o + 12) * S, pad: 1, vel: 0.9 });
-    for (let s = 0; s < 16; s += 2) drums.push({ tick: (o + s) * S, pad: 4, vel: s % 4 === 0 ? 0.7 : 0.45 });
-  }
   const p: Project = {
     version: PROJECT_VERSION,
     name: 'Loop 1',
@@ -184,7 +180,8 @@ export function defaultProject(): Project {
       muted: false,
       mutedTakes: [],
       kit: 'Pulse',
-      notes: drums,
+      rules: defaultRules(),
+      notes: [],
       pads: Array.from({ length: 16 }, () => ({ tune: 0, decay: 1, level: 0.85 })),
       swing: 0,
       velFromPosition: true,
@@ -228,6 +225,8 @@ export function migrate(saved: unknown): Project {
       }
     }
   }
+  // Saves from before drum rules keep their played beat and get no rules on top.
+  if (isObj(data.drums) && !Array.isArray(data.drums.rules)) data.drums = { ...data.drums, rules: [] };
   // Merge one level deep so older saves gain new fields.
   for (const [k, v] of Object.entries(data)) {
     const d = base[k];

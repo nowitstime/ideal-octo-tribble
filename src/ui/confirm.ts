@@ -29,6 +29,7 @@ export function clearTrack(track: TrackId) {
   update((p) => {
     p[track].notes = [];
     p[track].mutedTakes = [];
+    if (track === 'drums') for (const r of p.drums.rules) r.beats = [false, false, false, false];
   });
 }
 
