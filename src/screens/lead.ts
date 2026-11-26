@@ -3,7 +3,8 @@
 // up/down to bend. "Chord notes" shows only notes of the chord playing now.
 // In Arp mode, touching spawns an orb that arpeggiates the chord in time.
 import { h, everyFrame, onMove } from '../ui/dom';
-import { project, update, chordDegreeAt, loopSteps, type ArpPattern } from '../state';
+import { project, update, chordDegreeAt, type ArpPattern } from '../state';
+import { stepsToTicks } from '../ticks';
 import { transport, playLead, type LiveBend } from '../audio/transport';
 import { engine, type Voice } from '../audio/engine';
 import { LEAD_PRESETS } from '../audio/presets';
@@ -153,8 +154,7 @@ function playTab(body: HTMLElement, cleanups: (() => void)[]) {
   const arpStep = () => {
     if (!arp) return;
     const rate = rateFor(arp.x, arp.w);
-    const L = loopSteps(project);
-    const chord = arp.nextAbs !== null ? chordDegreeAt(project, ((arp.nextAbs % L) + L) % L) : transport.heardChord();
+    const chord = arp.nextAbs !== null ? chordDegreeAt(project, stepsToTicks(arp.nextAbs)) : transport.heardChord();
     // Chord tones starting at or just below the finger's note.
     const base = chord + 7 * Math.floor((arp.deg - chord) / 7);
     const list: number[] = [];

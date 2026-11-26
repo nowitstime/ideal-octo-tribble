@@ -8,6 +8,7 @@ import { engine } from '../audio/engine';
 import { chordInfo, keyName } from '../theory';
 import { degreeColor, TRACK_COLOR } from '../ui/colors';
 import { transportBar } from '../ui/transportBar';
+import { TPS } from '../ticks';
 
 interface Slot {
   id: string;
@@ -172,8 +173,8 @@ export function mapScreen(root: HTMLElement): () => void {
       sq.classList.toggle('is-muted', project[id].muted);
       const cells = sq.querySelector('.track-cells')!;
       const on = new Array(8).fill(false);
-      const notes = project[id].notes as { step: number }[];
-      for (const n of notes) if (n.step < 16) on[Math.floor(n.step / 2)] = true;
+      const notes: { tick: number }[] = project[id].notes;
+      for (const n of notes) if (n.tick < 16 * TPS) on[Math.floor(n.tick / (2 * TPS))] = true;
       cells.replaceChildren(...on.map((v) => h('span', { class: v ? 'on' : '' })));
       stringPaths.get(id)?.classList.toggle('faint', project[id].muted);
     }

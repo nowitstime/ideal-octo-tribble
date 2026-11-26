@@ -22,7 +22,12 @@ The latency test lives at `lab.html`.
 npm install
 npm run dev      # served on your LAN; mic test needs HTTPS or localhost
 npm run build
+npm test         # Vitest: theory, ticks, swing, save migration
 ```
+
+Note positions are stored as whole ticks (480 per quarter, see `src/ticks.ts`). Saves carry a `version`; older ones are converted on load (`migrate` in `src/project.ts`).
+
+Play-test notes live in [`feedback/`](feedback/README.md), one file per screen.
 
 ## Deploy
 

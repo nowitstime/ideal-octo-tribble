@@ -33,12 +33,12 @@ Everything from [IDEAS_FROM_POCKIMUSI.md](IDEAS_FROM_POCKIMUSI.md), put in order
 
 The groundwork that later phases need. Nothing new to play.
 
-- [ ] **Integer ticks.** Store note positions as whole ticks at 480 per quarter (120 per 1/16) instead of fractional 16th steps. Snapping, triplets, swing and bar changes then stay exact. Touches `state.ts`, `audio/transport.ts`, `ui/noteLane.ts` and every screen that writes notes.
-- [ ] **Project format v2 with migration.** Add `version: 2`. Old saves are converted on load (step × 120 = tick). Keep the old storage key readable once.
-- [ ] **Take id on every recorded note** (`take: number`). Unused until Phase 1, but it goes in now so saves don't need converting twice.
-- [ ] **A note's own data stays musical.** Pitched notes keep storing a degree or chord tone (as now) so they can re-fit when chords change.
-- [ ] **Tests.** Add Vitest for the pure logic: theory, tick snapping, swing, save migration. Run them with `npm test`.
-- [ ] **`feedback/` folder:** one file per screen (map, drums, chords, bass, lead, progression) plus a README with a session log.
+- [x] **Integer ticks.** Store note positions as whole ticks at 480 per quarter (120 per 1/16) instead of fractional 16th steps. Snapping, triplets, swing and bar changes then stay exact. Touches `state.ts`, `audio/transport.ts`, `ui/noteLane.ts` and every screen that writes notes.
+- [x] **Project format v2 with migration.** Add `version: 2`. Old saves are converted on load (step × 120 = tick). Keep the old storage key readable once.
+- [x] **Take id on every recorded note** (`take: number`). Unused until Phase 1, but it goes in now so saves don't need converting twice.
+- [x] **A note's own data stays musical.** Pitched notes keep storing a degree or chord tone (as now) so they can re-fit when chords change.
+- [x] **Tests.** Add Vitest for the pure logic: theory, tick snapping, swing, save migration. Run them with `npm test`.
+- [x] **`feedback/` folder:** one file per screen (map, drums, chords, bass, lead, progression) plus a README with a session log.
 
 **Done when:** an old project loads unchanged, everything plays and records as before, and the tests pass.
 

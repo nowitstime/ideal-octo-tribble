@@ -9,6 +9,7 @@ import { transportBar } from '../ui/transportBar';
 import { knob } from '../ui/knob';
 import { presetSwitch } from '../ui/presetSwitch';
 import { KITS } from '../audio/presets';
+import { TPS } from '../ticks';
 
 let selectedPad = 0;
 
@@ -38,13 +39,16 @@ function playTab(body: HTMLElement, cleanups: (() => void)[]) {
       const row = h('div', { class: 'lane-row' });
       for (let i = 0; i < 16; i++) {
         const step = bar * 16 + i;
-        const on = project.drums.notes.some((n) => n.pad === selectedPad && Math.abs(n.step - step) < 0.5);
+        const tick = step * TPS;
+        // A bead covers its whole 1/16 (unquantized hits round to the nearest).
+        const near = (n: { tick: number }) => Math.abs(n.tick - tick) < TPS / 2;
+        const on = project.drums.notes.some((n) => n.pad === selectedPad && near(n));
         const bead = h('button', { class: `bead ${on ? 'on' : ''} ${i % 4 === 0 ? 'beat' : ''}`, 'aria-label': `Step ${step + 1}`, style: { left: `${(i + 0.5) * 6.25}%` } });
         bead.addEventListener('click', () => update((p) => {
           const pad = selectedPad;
-          const hit = p.drums.notes.findIndex((n) => n.pad === pad && Math.abs(n.step - step) < 0.5);
+          const hit = p.drums.notes.findIndex((n) => n.pad === pad && near(n));
           if (hit >= 0) p.drums.notes.splice(hit, 1);
-          else p.drums.notes.push({ step, pad, vel: 0.8 });
+          else p.drums.notes.push({ tick, pad, vel: 0.8 });
         }));
         row.append(bead);
       }

@@ -3,7 +3,7 @@
 // pull it off its line to bend, or use the bend strip on the edge.
 import { h, svg, everyFrame, onMove } from '../ui/dom';
 import { noteLane } from '../ui/noteLane';
-import { project, update, type BassNote } from '../state';
+import { project, update, rootLine } from '../state';
 import { transport, playBass, type LiveBend } from '../audio/transport';
 import { engine, type Voice } from '../audio/engine';
 import { BASS_PRESETS } from '../audio/presets';
@@ -203,17 +203,9 @@ function setTab(body: HTMLElement) {
     h('div', { class: 'section' },
       h('div', { class: 'section-title' }, h('h2', { text: 'Pattern' })),
       h('div', { class: 'row-buttons' },
-        confirmButton('Simple root line', () => update((p) => { p.bass.notes = rootLine(p.bars * 16); })),
+        confirmButton('Simple root line', () => update((p) => { p.bass.notes = rootLine(p.bars); })),
         confirmButton('Clear bass', () => update((p) => { p.bass.notes = []; })),
       ),
     ),
   );
-}
-
-function rootLine(L: number): BassNote[] {
-  const out: BassNote[] = [];
-  for (let s = 0; s < L; s += 8) {
-    out.push({ step: s, len: 3, tone: 0, vel: 0.9 }, { step: s + 3, len: 1, tone: 0, vel: 0.6 }, { step: s + 6, len: 2, tone: 4, vel: 0.75 });
-  }
-  return out;
 }

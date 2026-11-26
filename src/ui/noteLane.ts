@@ -5,6 +5,7 @@ import { project, update, subscribe, loopSteps, chordDegreeAt } from '../state';
 import { transport } from '../audio/transport';
 import { TONE_OFFSETS } from '../theory';
 import { degreeColor } from './colors';
+import { TPS } from '../ticks';
 
 type Melodic = 'chords' | 'bass' | 'lead';
 
@@ -33,14 +34,15 @@ export function noteLane(track: Melodic): { el: HTMLElement; destroy: () => void
   let blocks: Block[] = [];
 
   function blocksFor(): Block[] {
-    const notes = project[track].notes as { step: number; len: number; degree?: number; tone?: number }[];
+    const notes: { tick: number; len: number; degree?: number; tone?: number }[] = project[track].notes;
     // Vertical position by pitch for bass/lead so melodies read as shapes.
     const pitch = (n: (typeof notes)[number]) => (track === 'lead' ? n.degree ?? 0 : track === 'bass' ? n.tone ?? 0 : 0);
     const ps = notes.map(pitch);
     const lo = Math.min(...ps, 0), hi = Math.max(...ps, 1);
     return notes.map((n, i) => {
-      const deg = track === 'bass' ? chordDegreeAt(project, n.step) + TONE_OFFSETS[n.tone ?? 0] : n.degree ?? 0;
-      return { i, step: n.step, len: n.len, color: degreeColor(deg), y: track === 'chords' ? 0.5 : 1 - (pitch(n) - lo) / (hi - lo || 1) };
+      const deg = track === 'bass' ? chordDegreeAt(project, n.tick) + TONE_OFFSETS[n.tone ?? 0] : n.degree ?? 0;
+      // The lane draws in steps.
+      return { i, step: n.tick / TPS, len: n.len / TPS, color: degreeColor(deg), y: track === 'chords' ? 0.5 : 1 - (pitch(n) - lo) / (hi - lo || 1) };
     });
   }
 
