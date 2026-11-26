@@ -1,6 +1,7 @@
-// Drums: 16 pads + a bead lane for the selected pad (play), per-pad sound (settings).
+// Drums: the beat written as rules, one row per sound (play); per-pad sound (settings).
 import { h, everyFrame } from '../ui/dom';
-import { project, update, subscribe, loopSteps } from '../state';
+import { project, update, subscribe } from '../state';
+import { rule, describe, SUB_NAMES, VARY_NAMES, type Vary } from '../drumRules';
 import { transport } from '../audio/transport';
 import { engine, PAD_NAMES } from '../audio/engine';
 import { padColor } from '../ui/colors';
@@ -9,9 +10,7 @@ import { transportBar } from '../ui/transportBar';
 import { knob } from '../ui/knob';
 import { presetSwitch } from '../ui/presetSwitch';
 import { KITS } from '../audio/presets';
-import { TPS } from '../ticks';
 import { confirmButton } from '../ui/confirm';
-import { passLines } from '../ui/passLines';
 
 let selectedPad = 0;
 
@@ -26,90 +25,99 @@ export function drumsScreen(root: HTMLElement, tab: 'play' | 'set'): () => void 
 }
 
 function playTab(body: HTMLElement, cleanups: (() => void)[]) {
-  // ---------- bead lane ----------
-  const laneLabel = h('span');
-  const lane = h('div', { class: 'lane' });
-  const head = h('span', { class: 'lane-head' });
-  const clearLane = confirmButton('clear pad', () => update((p) => { p.drums.notes = p.drums.notes.filter((n) => n.pad !== selectedPad); }), 'text-btn');
-  const passes = passLines('drums');
-  cleanups.push(passes.destroy);
-  body.append(h('div', { class: 'lane-labels mono muted small' }, laneLabel, clearLane), lane, passes.el);
+  // Write the beat as rules: per sound, which beats (1 2  3 4) and where in the beat (1 e & a).
+  body.classList.add('scroll');
+  const list = h('div', { class: 'rules' });
+  const adder = h('div', { class: 'rule-add' });
+  const played = h('div', { class: 'lane-labels mono muted small' });
+  body.append(list, adder, played);
+  let picking = false;
+  const swatches = new Map<number, HTMLElement>();
+  const beatCells: HTMLElement[][] = [];
 
-  function renderLane() {
-    laneLabel.textContent = `${PAD_NAMES[selectedPad]} · tap a bead to toggle`;
-    const L = loopSteps(project);
-    const rows: HTMLElement[] = [];
-    for (let bar = 0; bar < L / 16; bar++) {
-      const row = h('div', { class: 'lane-row' });
-      for (let i = 0; i < 16; i++) {
-        const step = bar * 16 + i;
-        const tick = step * TPS;
-        // A bead covers its whole 1/16 (unquantized hits round to the nearest).
-        const near = (n: { tick: number }) => Math.abs(n.tick - tick) < TPS / 2;
-        const on = project.drums.notes.some((n) => n.pad === selectedPad && near(n));
-        const bead = h('button', { class: `bead ${on ? 'on' : ''} ${i % 4 === 0 ? 'beat' : ''}`, 'aria-label': `Step ${step + 1}`, style: { left: `${(i + 0.5) * 6.25}%` } });
-        bead.addEventListener('click', () => update((p) => {
-          const pad = selectedPad;
-          const hit = p.drums.notes.findIndex((n) => n.pad === pad && near(n));
-          if (hit >= 0) p.drums.notes.splice(hit, 1);
-          else p.drums.notes.push({ tick, pad, vel: 0.8 });
-        }));
-        row.append(bead);
-      }
-      rows.push(row);
+  const audition = (pad: number) => {
+    engine.ensure();
+    engine.drum(pad, engine.now, 0.85, project.drums.pads[pad], project.drums.kit);
+  };
+
+  function render() {
+    swatches.clear();
+    beatCells.length = 0;
+    list.replaceChildren(...project.drums.rules.map((r, ri) => {
+      const color = padColor(r.pad);
+      const swatch = h('button', { class: 'rule-swatch', 'aria-label': `Play ${PAD_NAMES[r.pad]}`, style: { background: color } });
+      swatch.addEventListener('pointerdown', (e) => { e.preventDefault(); audition(r.pad); flash(r.pad); });
+      swatches.set(r.pad, swatch);
+      const vary = h('button', { class: `text-btn ${r.vary ? '' : 'muted'}`, text: `vary ${VARY_NAMES[r.vary]}` });
+      vary.addEventListener('click', () => update((p) => { const x = p.drums.rules[ri]; x.vary = ((x.vary + 1) % 3) as Vary; }));
+      const remove = h('button', { class: 'rule-x', 'aria-label': `Remove ${PAD_NAMES[r.pad]}`, text: '×' });
+      remove.addEventListener('click', () => update((p) => { p.drums.rules.splice(ri, 1); }));
+
+      // Beat squares. Each shows its four 1/16ths as dots, filled where it plays.
+      const cells = [0, 1, 2, 3].map((b) => {
+        const on = r.beats[b];
+        const dots = [0, 1, 2, 3].map((s) => h('i', { class: on && r.subs[s] ? 'on' : '' }));
+        const cell = h('button', { class: `beat-cell ${on ? 'on' : ''}`, 'aria-label': `Beat ${b + 1}`, 'aria-pressed': String(on), style: on ? { background: color } : {} },
+          h('span', { class: 'beat-num', text: b + 1 }), h('span', { class: 'beat-dots' }, ...dots));
+        cell.addEventListener('click', () => {
+          update((p) => {
+            const x = p.drums.rules[ri];
+            x.beats[b] = !x.beats[b];
+            if (x.beats[b] && !x.subs.some(Boolean)) x.subs[0] = true;
+          });
+          if (r.beats[b]) audition(r.pad);
+        });
+        return cell;
+      });
+      beatCells.push(cells);
+      const subs = SUB_NAMES.map((name, si) => {
+        const b = h('button', { class: `sub ${r.subs[si] ? 'on' : ''}`, 'aria-label': `On the ${name}`, 'aria-pressed': String(r.subs[si]), text: name });
+        b.addEventListener('click', () => update((p) => { const x = p.drums.rules[ri]; x.subs[si] = !x.subs[si]; }));
+        return b;
+      });
+      return h('div', { class: 'rule' },
+        h('div', { class: 'rule-head' }, swatch, h('span', { class: 'rule-name', text: PAD_NAMES[r.pad] }), h('span', { class: 'mono muted small rule-say', text: describe(r) }), vary, remove),
+        h('div', { class: 'rule-body' }, h('div', { class: 'beat-cells' }, ...cells), h('div', { class: 'subs' }, ...subs)),
+      );
+    }));
+
+    // Add a sound: tap "+ sound", then pick one of the sounds not yet used.
+    const used = new Set(project.drums.rules.map((r) => r.pad));
+    const free = PAD_NAMES.map((_, i) => i).filter((i) => !used.has(i));
+    if (picking && free.length) {
+      adder.replaceChildren(h('div', { class: 'pick' }, ...free.map((i) => {
+        const b = h('button', { class: 'pick-pad', style: { background: padColor(i) } }, h('span', { text: PAD_NAMES[i] }));
+        b.addEventListener('click', () => { audition(i); picking = false; update((p) => { p.drums.rules.push(rule(i, [])); }); });
+        return b;
+      })), h('button', { class: 'text-btn', text: 'cancel', onClick: () => { picking = false; render(); } }));
+    } else {
+      adder.replaceChildren(free.length ? h('button', { class: 'chip', text: '+ sound', onClick: () => { picking = true; render(); } }) : '');
     }
-    lane.replaceChildren(...rows, head);
+
+    // Hits played in on the old pads still play; show them so they can be cleared.
+    const n = project.drums.notes.length;
+    played.replaceChildren(...(n ? [h('span', { text: `${n} played hit${n > 1 ? 's' : ''} also in the loop` }), confirmButton('clear them', () => update((p) => { p.drums.notes = []; }), 'text-btn')] : []));
   }
 
-  // ---------- pads ----------
-  const grid = h('div', { class: 'pads' });
-  const pads: HTMLButtonElement[] = PAD_NAMES.map((name, i) => {
-    const pad = h('button', { class: 'pad', style: { background: padColor(i) } }, h('span', { text: name }));
-    pad.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      engine.ensure();
-      const r = pad.getBoundingClientRect();
-      const x = e.clientX - r.left, y = e.clientY - r.top;
-      let vel = 0.85;
-      if (project.drums.velFromPosition) {
-        const d = Math.hypot(x - r.width / 2, y - r.height / 2) / (Math.min(r.width, r.height) / 2);
-        vel = Math.max(0.3, 1 - 0.6 * Math.min(1, d));
-      }
-      // Sound first, everything else after.
-      engine.drum(i, engine.now, vel, project.drums.pads[i], project.drums.kit);
-      transport.recordDrum(e, i, vel);
-      if (selectedPad !== i) { selectedPad = i; renderLane(); }
-      flash(pad, i);
-      const ring = h('span', { class: 'touch-ring', style: { left: `${x}px`, top: `${y}px` } }, h('span', { class: 'touch-vel', text: vel.toFixed(2) }));
-      pad.append(ring);
-      ring.animate([{ opacity: 1, transform: 'translate(-50%,-50%) scale(0.6)' }, { opacity: 0, transform: 'translate(-50%,-50%) scale(1.25)' }], { duration: 450, easing: 'ease-out' }).onfinish = () => ring.remove();
-    });
-    return pad;
-  });
-  grid.append(...pads);
-  body.append(grid, h('p', { class: 'hint', text: project.drums.velFromPosition ? 'centre is louder · press record to capture' : 'fixed velocity · press record to capture' }));
-
-  function flash(pad: HTMLElement, i: number) {
-    pad.animate([{ background: padColor(i, true) }, { background: padColor(i) }], { duration: 220, easing: 'ease-out' });
+  function flash(pad: number) {
+    swatches.get(pad)?.animate([{ background: padColor(pad, true), transform: 'scale(1.18)' }, { background: padColor(pad), transform: 'scale(1)' }], { duration: 220, easing: 'ease-out' });
   }
 
-  renderLane();
-  cleanups.push(subscribe(renderLane));
+  render();
+  cleanups.push(subscribe(render));
 
-  // Light up pads when the loop plays them.
   cleanups.push(transport.onHit((track, t, pad) => {
     if (track !== 'drums') return;
-    setTimeout(() => flash(pads[pad], pad), Math.max(0, (t - engine.now + engine.outputDelay) * 1000));
+    setTimeout(() => flash(pad), Math.max(0, (t - engine.now + engine.outputDelay) * 1000));
   }));
 
+  // Mark the beat being heard in every row.
+  let lastBeat = -1;
   cleanups.push(everyFrame(() => {
-    const L = loopSteps(project);
-    const s = transport.heardStep();
-    const bar = Math.floor(s / 16);
-    head.style.display = transport.playing ? 'block' : 'none';
-    head.style.left = `${((s % 16) / 16) * 100}%`;
-    head.style.top = `${(bar / (L / 16)) * 100}%`;
-    head.style.height = `${100 / (L / 16)}%`;
+    const beat = transport.playing ? Math.floor(transport.heardStep() / 4) % 4 : -1;
+    if (beat === lastBeat) return;
+    lastBeat = beat;
+    for (const cells of beatCells) cells.forEach((c, i) => c.classList.toggle('now', i === beat));
   }));
 }
 
@@ -151,21 +159,17 @@ function setTab(body: HTMLElement, cleanups: (() => void)[]) {
       ),
       h('div', { class: 'row-buttons' },
         h('button', { class: 'chip', text: 'Audition', onClick: () => engine.drum(selectedPad, engine.now, 0.9, project.drums.pads[selectedPad], project.drums.kit) }),
-        confirmButton('Clear this lane', () => update((pr) => { pr.drums.notes = pr.drums.notes.filter((n) => n.pad !== selectedPad); })),
-      ),
+              ),
     );
   }
 
   function renderKit() {
-    const velToggle = h('button', { class: `toggle ${project.drums.velFromPosition ? 'on' : ''}`, 'aria-label': 'Velocity from touch position' }, h('span'));
-    velToggle.addEventListener('click', () => { update((p) => { p.drums.velFromPosition = !p.drums.velFromPosition; }); renderKit(); });
     kit.replaceChildren(
       h('div', { class: 'section-title' }, h('h2', { text: 'Whole kit' })),
       h('div', { class: 'knobs' },
         knob({ label: 'Swing', min: 0, max: 0.6, value: project.drums.swing, reset: 0, color: '#ECE9E2', format: (v) => `${Math.round(v * 100)}%`, onChange: (v) => update((p) => { p.drums.swing = v; }) }),
       ),
-      h('div', { class: 'setting-row' }, h('span', { text: 'Touch position sets velocity' }), velToggle),
-      h('div', { class: 'row-buttons' }, confirmButton('Clear all drums', () => update((p) => { p.drums.notes = []; }))),
+      h('div', { class: 'row-buttons' }, confirmButton('Clear all drums', () => update((p) => { p.drums.notes = []; for (const r of p.drums.rules) r.beats = [false, false, false, false]; }))),
     );
   }
 

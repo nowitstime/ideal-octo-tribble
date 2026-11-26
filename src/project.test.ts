@@ -48,6 +48,14 @@ describe('save migration', () => {
     expect(p.lead.mutedTakes).toEqual([]);
   });
 
+  it('gives old saves no drum rules, so their played beat is not doubled', () => {
+    expect(migrate(v1Save()).drums.rules).toEqual([]);
+    expect(defaultProject().drums.rules.length).toBeGreaterThan(0);
+    const saved = JSON.parse(JSON.stringify(defaultProject()));
+    saved.drums.rules[0].vary = 2;
+    expect(migrate(saved).drums.rules[0].vary).toBe(2);
+  });
+
   it('leaves v2 saves alone and survives a round trip', () => {
     const once = migrate(v1Save());
     const twice = migrate(JSON.parse(JSON.stringify(once)));
@@ -87,6 +95,7 @@ describe('project edits', () => {
 
   it('copies the pattern when the loop grows', () => {
     const p = defaultProject();
+    p.drums.notes = [{ tick: 0, pad: 0, vel: 1 }, { tick: 480, pad: 1, vel: 1 }];
     const before = p.drums.notes.length;
     setBars(p, 4);
     expect(p.bars).toBe(4);

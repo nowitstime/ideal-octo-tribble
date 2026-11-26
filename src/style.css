@@ -319,3 +319,28 @@ h1, h2 { margin: 0; font-weight: 500; letter-spacing: -0.02em; }
 .pass.on .pass-line { height: 2.5px; background: var(--ink); }
 .pass.on .pass-num { color: var(--ink); }
 .pass.muted { opacity: 0.35; }
+
+/* ---------- drum rules ---------- */
+.rules { display: flex; flex-direction: column; gap: 22px; padding-top: 6px; }
+.rule { display: flex; flex-direction: column; gap: 10px; }
+.rule-head { display: flex; align-items: center; gap: 10px; min-height: 28px; }
+.rule-swatch { width: 22px; height: 22px; flex: none; }
+.rule-name { font-size: 15px; font-weight: 500; text-transform: capitalize; }
+.rule-say { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rule-x { width: 32px; height: 32px; margin-right: -8px; font-size: 18px; color: var(--muted); }
+.rule-body { display: flex; align-items: stretch; gap: 14px; }
+.beat-cells { flex: 1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.beat-cell { position: relative; height: 56px; background: var(--surface); display: flex; flex-direction: column; justify-content: space-between; padding: 7px 8px; text-align: left; transition: background .12s; }
+.beat-num { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.beat-cell.on .beat-num { color: var(--ink); }
+.beat-dots { display: flex; justify-content: space-between; align-items: center; }
+.beat-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--ink); opacity: 0.18; }
+.beat-dots i.on { width: 8px; height: 8px; opacity: 1; }
+.beat-cell.now::after { content: ''; position: absolute; left: 0; right: 0; bottom: -6px; height: 2px; background: var(--ink); }
+.subs { display: grid; grid-template-columns: repeat(2, 30px); grid-auto-rows: 1fr; gap: 4px; }
+.sub { font-family: var(--mono); font-size: 13px; color: var(--muted); border-radius: 50%; width: 30px; height: 26px; }
+.sub.on { background: var(--ink); color: var(--paper); border-radius: 13px; }
+.rule-add { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.pick { width: 100%; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.pick-pad { height: 48px; display: flex; align-items: flex-end; padding: 6px 8px; }
+.pick-pad > span { font-size: 12px; font-weight: 500; text-transform: capitalize; }

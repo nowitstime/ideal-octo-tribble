@@ -8,6 +8,7 @@ import { engine } from '../audio/engine';
 import { chordInfo, keyName } from '../theory';
 import { degreeColor, TRACK_COLOR } from '../ui/colors';
 import { transportBar } from '../ui/transportBar';
+import { ruleHits } from '../drumRules';
 import { TPS } from '../ticks';
 import { clearControl } from '../ui/confirm';
 
@@ -193,7 +194,7 @@ export function mapScreen(root: HTMLElement): () => void {
       sq.classList.toggle('is-muted', project[id].muted);
       const cells = sq.querySelector('.track-cells')!;
       const on = new Array(8).fill(false);
-      const notes: { tick: number }[] = project[id].notes;
+      const notes: { tick: number }[] = id === 'drums' ? [...project.drums.notes, ...ruleHits(project.drums.rules, 1, 0)] : project[id].notes;
       for (const n of notes) if (n.tick < 16 * TPS) on[Math.floor(n.tick / (2 * TPS))] = true;
       cells.replaceChildren(...on.map((v) => h('span', { class: v ? 'on' : '' })));
       stringPaths.get(id)?.classList.toggle('faint', project[id].muted);

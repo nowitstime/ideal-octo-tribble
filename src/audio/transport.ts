@@ -4,6 +4,7 @@ import { engine, type Voice } from './engine';
 import { project, loopSteps, loopTicks, update, chordDegreeAt, type ChordNote, type BendPoint, type TrackId, type Project } from '../state';
 import { TPS, stepsToTicks, swingTicks, snap, wrap } from '../ticks';
 import { audible, passIndex, replaceSpan } from '../takes';
+import { ruleHits } from '../drumRules';
 import { chordMidis, bassMidi, leadMidi, type Mods } from '../theory';
 import { CHORD_PRESETS, BASS_PRESETS, LEAD_PRESETS, presetByName } from './presets';
 
@@ -211,6 +212,15 @@ class Transport {
       if (!drums.muted) {
         muted = drums.mutedTakes;
         for (const n of drums.notes) {
+          const abs = due(n);
+          if (abs === null) continue;
+          const t = at(abs) + this.swing(n.tick);
+          engine.drum(n.pad, t, n.vel, drums.pads[n.pad], drums.kit);
+          this.hit('drums', t, n.pad);
+        }
+        // The written beat: rules make fresh hits for each pass (k) of the loop.
+        muted = [];
+        for (const n of ruleHits(drums.rules, project.bars, k)) {
           const abs = due(n);
           if (abs === null) continue;
           const t = at(abs) + this.swing(n.tick);
